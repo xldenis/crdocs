@@ -1,4 +1,4 @@
-mod lseq;
+pub mod lseq;
 mod utils;
 
 use wasm_bindgen::prelude::*;
