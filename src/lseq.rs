@@ -8,15 +8,15 @@ const INITIAL_BASE: u32 = 3; // start with 2^8
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
 pub struct Identifier {
-    path: Vec<usize>,
-    site_id: Vec<u64>,
-    counter: u64
+    path: Vec<(usize, u64)>,
+    // site_id: u64,
+    // counter: u64
 }
 
 pub struct IdentGen {
     initial_base_bits: u32,
     site_id: u64,
-    clock: u64
+    // clock: u64
 }
 
 impl IdentGen {
@@ -25,15 +25,15 @@ impl IdentGen {
     }
 
     pub fn new_with_args(base: u32, site_id: u64) -> IdentGen {
-        IdentGen { initial_base_bits: INITIAL_BASE, site_id: site_id, clock: 0 }
+        IdentGen { initial_base_bits: INITIAL_BASE, site_id: site_id }
     }
 
     pub fn lower(&self) -> Identifier {
-        Identifier { path: vec![0], site_id: vec![self.site_id], counter: 0 }
+        Identifier { path: vec![(0, 0)] }
     }
 
     pub fn upper(&self) -> Identifier {
-        Identifier { path: vec![2usize.pow(self.initial_base_bits) - 1], site_id: vec![self.site_id], counter: 0 }
+        Identifier { path: vec![(2usize.pow(self.initial_base_bits) - 1, 0)] }
     }
     /// Allocates a new identifier between p and q.
     /// Requires that p < q and will produce a new identifier z, p < z < q
@@ -47,11 +47,11 @@ impl IdentGen {
                 // Our descent continues...
                 (Some(a), Some(b)) if a == b => { }
                 // We found a gap between the two identifiers
-                (Some(a), Some(b)) if *a + 1 < *b => {
+                (Some(a), Some(b)) if a.0 + 1 < b.0 => {
                     // is there room at this level?
-                    if *a + 1 < *b {
+                    if a.0 + 1 < b.0 {
                         // great! let's allocate an identifier at this depth then
-                        let next_index = self.index_in_range(*a + 1, *b, depth as u32);
+                        let next_index = self.index_in_range(a.0 + 1, b.0, depth as u32);
                         return self.replace_last(p, depth, next_index);
                     } else {
                         // Search for room at a lower level (so depth + 1)
@@ -66,9 +66,9 @@ impl IdentGen {
                 (Some(_a), _) => { return self.alloc_with_lower(p, depth); }
                 // Because the upper bound is zero, we're forced to create a path with zeros until
                 // the upper bound is either empty or non-zero
-                (None, Some(0)) => { return self.alloc_with_upper(p, q, depth); }
+                (None, Some(b)) if b.0 <= 1 => { return self.alloc_with_upper(p, q, depth); }
                 (None, Some(b)) => {
-                    let next_index = self.index_in_range(0, *b, depth as u32);
+                    let next_index = self.index_in_range(1, b.0, depth as u32);
                     return self.push_index(p, next_index);
                 }
                 // The two paths are fully equal which means that the site_ids MUST be different or
@@ -88,26 +88,28 @@ impl IdentGen {
     fn alloc_with_upper(&mut self, p: &Identifier, q: &Identifier, mut depth: usize) -> Identifier {
         assert!(p.path.len() <= depth);
         assert!(q.path.len() > depth);
-        assert!(q.path[depth] == 0);
+        assert!(q.path[depth].0 <= 1);
 
         let mut ident = p.clone();
         loop {
             match q.path.get(depth) {
                 // append a 0 to the result path as well
-                Some(0) => ident.path.push(0),
+                Some(b) if b.0 <= 1 => ident.path.push((0, b.1)),
                 // oo! a non-zero value
                 _ => break,
             }
             depth += 1;
         };
 
+        println!("HERE");
         // If we actually ran out of upper bound values then we're free to choose
         // anything on the next level, otherwise use the upper bound we've found.
-        let upper = match q.path.get(depth + 1) {
-            Some(b) => *b,
+        let upper = match q.path.get(depth) {
+            Some(b) => b.0,
             None => self.width_at(depth + 1),
         };
-        let next_index = self.index_in_range(0, upper, depth as u32);
+        println!("{:?} {}", q.path.get(depth + 1), depth);
+        let next_index = self.index_in_range(1, upper, depth as u32);
         return self.push_index(&ident, next_index);
     }
 
@@ -117,13 +119,13 @@ impl IdentGen {
 
         loop {
             match p.path.get(lower_bound) {
-                Some(ix) if ix + 1 < self.width_at(lower_bound) => {
-                    let next_index = self.index_in_range(*ix, self.width_at(lower_bound), lower_bound as u32);
+                Some((ix, _)) if ix + 1 < self.width_at(lower_bound) => {
+                    let next_index = self.index_in_range(*ix + 1, self.width_at(lower_bound), lower_bound as u32);
                     return self.push_index(p, next_index);
                 }
                 Some(_) => { }
                 None => {
-                    let next_index = self.index_in_range(0, self.width_at(lower_bound), lower_bound as u32);
+                    let next_index = self.index_in_range(1, self.width_at(lower_bound), lower_bound as u32);
                     return self.push_index(p, next_index);
                 }
             }
@@ -135,20 +137,20 @@ impl IdentGen {
     fn replace_last(&mut self, p: &Identifier, depth: usize, ix: usize) -> Identifier {
         let mut ident = p.clone();
         ident.path.truncate(depth);
-        ident.path.push(ix);
-        ident.site_id.truncate(depth);
-        ident.site_id.push(self.site_id);
-        ident.counter = self.clock;
-        self.clock += 1;
+        ident.path.push((ix, self.site_id));
+        // ident.site_id.truncate(depth);
+        // ident.site_id.push(self.site_id);
+        // ident.counter = 0;
+        // self.clock += 1;
         return ident;
     }
 
     fn push_index(&mut self, p: &Identifier, ix: usize) -> Identifier {
         let mut ident = p.clone();
-        ident.path.push(ix);
-        ident.site_id.push(self.site_id);
-        ident.counter = self.clock;
-        self.clock += 1;
+        ident.path.push((ix, self.site_id));
+        // ident.site_id.push(self.site_id);
+        // ident.counter = 0;
+        // self.clock += 1;
         return ident;
     }
 
@@ -261,7 +263,7 @@ mod test {
 
     impl Arbitrary for Identifier {
         fn arbitrary<G: Gen>(g: &mut G) -> Identifier {
-            Identifier { path: Vec::<usize>::arbitrary(g), site_id: Vec::<u64>::arbitrary(g), counter: u64::arbitrary(g) }
+            Identifier { path: Vec::<(usize, u64)>::arbitrary(g) }
         }
     }
 
@@ -278,11 +280,11 @@ mod test {
     fn test_alloc_eq_path() {
         let mut gen = IdentGen::new();
 
-        let x = Identifier { path: vec![1, 0], site_id: vec![0], counter: 0};
-        let y = Identifier { path: vec![1, 0], site_id: vec![1], counter: 0};
+        let x = Identifier { path: vec![(1, 0), (1, 0)]};
+        let y = Identifier { path: vec![(1, 0), (1, 1)]};
         gen.alloc(&x, &y);
         let b = gen.alloc(&x, &y);
-        println!("{:?} {:?} {:?}", x, b, y);
+        // println!("{:?} {:?} {:?}", x, b, y);
         assert!(x < b);
         assert!(b < y);
     }
@@ -290,8 +292,8 @@ mod test {
     #[test]
     fn test_different_len_paths() {
         let mut gen = IdentGen::new();
-        let x = Identifier { path: vec![1], site_id: vec![0], counter: 0};
-        let y = Identifier { path: vec![1, 15], site_id: vec![0], counter: 0};
+        let x = Identifier { path: vec![(1, 0)]};
+        let y = Identifier { path: vec![(1, 0), (15,0)]};
 
         let z = gen.alloc(&x, &y);
 
@@ -302,23 +304,45 @@ mod test {
     #[test]
     fn test_alloc() {
         let mut gen = IdentGen::new();
-        let a = Identifier { path: vec![1], site_id: vec![0], counter: 0};
-        let b = Identifier { path: vec![3], site_id: vec![0], counter: 0};
+        let a = Identifier { path: vec![(1, 0)]};
+        let b = Identifier { path: vec![(3, 0)]};
 
-        assert_eq!(gen.alloc(&a, &b), Identifier { path: vec![2], site_id: vec![0], counter: 0 });
+        assert_eq!(gen.alloc(&a, &b), Identifier { path: vec![(2, 0)] });
 
-        let c = Identifier { path: vec![1, 0, 1], site_id: vec![0, 0, 0], counter: 0};
-        let d = Identifier { path: vec![1, 0, 3], site_id: vec![0, 0, 0], counter: 0};
+        let c = Identifier { path: vec![(1, 0), (0, 0), (1, 0)]};
+        let d = Identifier { path: vec![(1, 0), (0, 0), (3, 0)]};
 
-        assert_eq!(gen.alloc(&c, &d), Identifier { path: vec![1, 0, 2], site_id: vec![0, 0, 0], counter: 1 });
+        assert_eq!(gen.alloc(&c, &d), Identifier { path: vec![(1, 0), (0,0), (2,0)] });
 
-        let e = Identifier { path: vec![1], site_id: vec![0], counter: 0};
-        let f = Identifier { path: vec![2], site_id: vec![0], counter: 0};
+        let e = Identifier { path: vec![(1, 0)]};
+        let f = Identifier { path: vec![(2, 0)]};
 
         let res = gen.alloc(&e, &f);
 
         assert!(e < res);
         assert!(res < f);
+        {
+            let mut gen = IdentGen::new_with_args(INITIAL_BASE, 1);
+
+            let a = Identifier { path: vec![(4, 0), (4, 0)]};
+            let b = Identifier { path: vec![(4, 0), (4, 0), (1, 1)]};
+            // let a = Identifier { path: vec![(4, 0)]};
+            // let b = Identifier { path: vec![(4, 1)]};
+
+            let c = gen.alloc(&a, &b);
+            println!("{:?}", c);
+            assert!(a < c);
+            assert!(c < b);
+        }
+        {
+            let a = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0)]};
+            let b = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)]};
+
+            let c = gen.alloc(&a, &b);
+            println!("{:?}", c);
+            assert!(a < c);
+            assert!(c < b);
+        }
 
     }
 
@@ -340,7 +364,7 @@ mod test {
         let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 0) };
         let mut site2 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 1) };
 
-        for _ in 0..50 {
+        for _ in 0..5000 {
             if rng.gen() {
                 let op = site1.local_insert(rng.gen_range(0, site1.text.len() + 1), s1.next().unwrap());
                 println!("site1 {:?}", op);
