@@ -2,7 +2,7 @@ use rand::Rng;
 
 const BOUNDARY: usize = 10;
 
-const INITIAL_BASE: u32 = 3; // start with 2^8
+pub const INITIAL_BASE: u32 = 3; // start with 2^8
 
 #[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
 pub struct Identifier {
@@ -96,7 +96,8 @@ impl IdentGen {
         return self.push_index(&ident, next_index);
     }
 
-    //
+    // Here we have the lowest possible upper bound and we just need to traverse the lower bound
+    // until we can find somehwere to insert a new identifier
     fn alloc_with_lower(&mut self, p: &Identifier, depth: usize) -> Identifier {
         let mut lower_bound = depth;
 
@@ -145,11 +146,9 @@ impl IdentGen {
         let step = if interval > 0 { rng.gen_range(0, interval) } else { 0 };
         if self.strategy(depth) {
             //boundary+
-
             lower + step
         } else {
             //boundary-
-
             upper - step - 1
         }
     }
@@ -160,83 +159,10 @@ impl IdentGen {
     }
 }
 
-pub struct LSeq {
-    text: Vec<(Identifier, u64)>, // gen: NameGenerator
-    gen: IdentGen,
-}
-
-#[derive(Debug)]
-pub enum Op {
-    Insert(Identifier, u64),
-    Delete(Identifier),
-}
-
-impl LSeq {
-    pub fn do_insert(&mut self, ix: Identifier, c: u64) {
-        let res = self.text.binary_search_by(|e| e.0.cmp(&ix));
-
-        match res {
-            Ok(_) => {
-                panic!("tried to insert an index that's already in!! {:?} {:?}", ix, self.gen.site_id);
-            }
-            // The index doesn't exist in our current text
-            Err(i) => {
-                // the index we want to insert is outside the current range
-                self.text.insert(i, (ix, c));
-            }
-        }
-    }
-
-    pub fn do_delete(&mut self, ix: Identifier) {
-        if let Ok(i) = self.text.binary_search_by(|e| e.0.cmp(&ix)) {
-            self.text.remove(i);
-        }
-    }
-
-    pub fn apply(&mut self, op: Op) {
-        match op {
-            Op::Insert(id, c) => self.do_insert(id, c),
-            Op::Delete(id) => self.do_delete(id),
-        }
-    }
-
-    // Perform a local insertion and create the operation that should be broadcast
-    pub fn local_insert(&mut self, ix: usize, c: char) -> Op {
-        let lower = self.gen.lower();
-        let upper = self.gen.upper();
-        // append!
-        let ix_ident = if self.text.len() <= ix {
-            let prev = self.text.last().map(|(i, _)| i).unwrap_or_else(|| &lower);
-            println!("append!");
-            self.gen.alloc(prev, &upper)
-        } else {
-            let prev = self.text.get(ix).map(|(i, _)| i).unwrap();
-            let next = self.text.get(ix + 1).map(|(i, _)| i).unwrap_or(&upper);
-            let a = self.gen.alloc(prev, next);
-            println!("ix={:?} len={:?} lower={:?} a={:?} upper={:?}", ix, self.text.len(), prev, a, next);
-
-            assert!(prev < &a); assert!(&a < next);
-            a
-        };
-        self.do_insert(ix_ident.clone(), c as u64);
-
-        Op::Insert(ix_ident, c as u64)
-    }
-
-    pub fn local_delete(&mut self, ix: usize) -> Op {
-        let ident = self.text[ix].0.clone();
-
-        self.do_delete(ident.clone());
-
-        Op::Delete(ident.clone())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use quickcheck::{Arbitrary, Gen, TestResult};
-    use rand::distributions::Alphanumeric;
+    use quickcheck::{TestResult, Gen, Arbitrary};
 
     impl Arbitrary for Identifier {
         fn arbitrary<G: Gen>(g: &mut G) -> Identifier {
@@ -329,31 +255,5 @@ mod test {
         assert_eq!(gen.index_in_range(0, 1, 1), 0);
     }
 
-    #[test]
-    fn test_inserts () {
-        // A simple smoke test to ensure that insertions work properly.
-        // Uses two sites which random insert a character and then immediately insert it into the
-        // other site.
-        let mut rng = rand::thread_rng();
 
-        let mut s1 = rng.sample_iter(Alphanumeric);
-        let mut s2 = rng.sample_iter(Alphanumeric);
-        let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 0) };
-        let mut site2 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 1) };
-
-        for _ in 0..5000 {
-            if rng.gen() {
-                let op = site1.local_insert(rng.gen_range(0, site1.text.len() + 1), s1.next().unwrap());
-                println!("site1 {:?}", op);
-                site2.apply(op);
-            } else {
-                let op = site2.local_insert(rng.gen_range(0, site2.text.len() + 1), s2.next().unwrap());
-                println!("site2 {:?}", op);
-                site1.apply(op);
-
-            }
-        }
-        assert_eq!(site1.text, site2.text);
-
-    }
 }
