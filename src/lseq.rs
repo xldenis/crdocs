@@ -1,7 +1,5 @@
 use rand::Rng;
 
-use rand::distributions::Alphanumeric;
-
 const BOUNDARY: usize = 10;
 
 const INITIAL_BASE: u32 = 3; // start with 2^8
@@ -25,7 +23,7 @@ impl IdentGen {
     }
 
     pub fn new_with_args(base: u32, site_id: u64) -> IdentGen {
-        IdentGen { initial_base_bits: INITIAL_BASE, site_id: site_id }
+        IdentGen { initial_base_bits: base, site_id: site_id }
     }
 
     pub fn lower(&self) -> Identifier {
@@ -48,34 +46,25 @@ impl IdentGen {
                 (Some(a), Some(b)) if a == b => { }
                 // We found a gap between the two identifiers
                 (Some(a), Some(b)) if a.0 + 1 < b.0 => {
-                    // is there room at this level?
-                    if a.0 + 1 < b.0 {
-                        // great! let's allocate an identifier at this depth then
-                        let next_index = self.index_in_range(a.0 + 1, b.0, depth as u32);
-                        return self.replace_last(p, depth, next_index);
-                    } else {
-                        // Search for room at a lower level (so depth + 1)
-                        return self.alloc_with_lower(p, depth + 1);
-                    }
+                    // great! let's allocate an identifier at this depth then
+                    let next_index = self.index_in_range(a.0 + 1, b.0, depth as u32);
+                    return self.replace_last(p, depth, next_index);
                 }
 
                 // The upper bound ended on the previous level.
                 // This means we can allocate a node in the range a..max_for_depth
                 // If there isn't room at this level because _a = max_for_depth then we'll keep
                 // searching below.
-                (Some(_a), _) => { return self.alloc_with_lower(p, depth); }
+                (Some(_a), _) => { return self.alloc_with_lower(p, depth + 1); }
                 // Because the upper bound is zero, we're forced to create a path with zeros until
                 // the upper bound is either empty or non-zero
-                (None, Some(b)) if b.0 <= 1 => { return self.alloc_with_upper(p, q, depth); }
-                (None, Some(b)) => {
-                    let next_index = self.index_in_range(1, b.0, depth as u32);
-                    return self.push_index(p, next_index);
-                }
+                (None, Some(b)) => { return self.alloc_with_upper(p, q, depth); }
+
                 // The two paths are fully equal which means that the site_ids MUST be different or
                 // we are in an invalid situation
                 (None, None) => {
                     let max_for_depth = 2usize.pow(self.initial_base_bits + depth as u32) - 1;
-                    let next_index = self.index_in_range(0, max_for_depth, depth as u32);
+                    let next_index = self.index_in_range(1, max_for_depth, depth as u32);
                     return self.push_index(p, next_index);
                 }
             };
@@ -86,10 +75,6 @@ impl IdentGen {
     // Here the problem is that we've run out of the lower path and the upper one is zero!
     // The idea is to keep pushing 0s onto the lower path until we can find a new level to allocate at.
     fn alloc_with_upper(&mut self, p: &Identifier, q: &Identifier, mut depth: usize) -> Identifier {
-        assert!(p.path.len() <= depth);
-        assert!(q.path.len() > depth);
-        assert!(q.path[depth].0 <= 1);
-
         let mut ident = p.clone();
         loop {
             match q.path.get(depth) {
@@ -101,14 +86,12 @@ impl IdentGen {
             depth += 1;
         };
 
-        println!("HERE");
         // If we actually ran out of upper bound values then we're free to choose
         // anything on the next level, otherwise use the upper bound we've found.
         let upper = match q.path.get(depth) {
             Some(b) => b.0,
             None => self.width_at(depth + 1),
         };
-        println!("{:?} {}", q.path.get(depth + 1), depth);
         let next_index = self.index_in_range(1, upper, depth as u32);
         return self.push_index(&ident, next_index);
     }
@@ -138,19 +121,12 @@ impl IdentGen {
         let mut ident = p.clone();
         ident.path.truncate(depth);
         ident.path.push((ix, self.site_id));
-        // ident.site_id.truncate(depth);
-        // ident.site_id.push(self.site_id);
-        // ident.counter = 0;
-        // self.clock += 1;
         return ident;
     }
 
     fn push_index(&mut self, p: &Identifier, ix: usize) -> Identifier {
         let mut ident = p.clone();
         ident.path.push((ix, self.site_id));
-        // ident.site_id.push(self.site_id);
-        // ident.counter = 0;
-        // self.clock += 1;
         return ident;
     }
 
@@ -260,6 +236,7 @@ impl LSeq {
 mod test {
     use super::*;
     use quickcheck::{Arbitrary, Gen, TestResult};
+    use rand::distributions::Alphanumeric;
 
     impl Arbitrary for Identifier {
         fn arbitrary<G: Gen>(g: &mut G) -> Identifier {
@@ -269,7 +246,7 @@ mod test {
 
     #[quickcheck]
     fn prop_alloc(p: Identifier, q: Identifier) -> TestResult {
-        if (p >= q || p.path.len() == 0 || q.path.len() == 0) { return TestResult::discard(); }
+        if p >= q || p.path.len() == 0 || q.path.len() == 0 { return TestResult::discard(); }
         let mut gen = IdentGen::new();
         let z = gen.alloc(&p, &q);
 
