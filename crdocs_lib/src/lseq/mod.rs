@@ -2,7 +2,6 @@ pub mod ident;
 
 use ident::*;
 
-
 pub struct LSeq {
     text: Vec<(Identifier, u64)>, // gen: NameGenerator
     gen: IdentGen,
@@ -50,7 +49,8 @@ impl LSeq {
             let next = self.text.get(ix + 1).map(|(i, _)| i).unwrap_or(&upper);
             let a = self.gen.alloc(prev, next);
 
-            assert!(prev < &a); assert!(&a < next);
+            assert!(prev < &a);
+            assert!(&a < next);
             a
         };
         self.do_insert(ix_ident.clone(), c as u64);
@@ -74,7 +74,7 @@ mod test {
     use rand::Rng;
 
     #[test]
-    fn test_inserts () {
+    fn test_inserts() {
         // A simple smoke test to ensure that insertions work properly.
         // Uses two sites which random insert a character and then immediately insert it into the
         // other site.
@@ -93,16 +93,15 @@ mod test {
             } else {
                 let op = site2.local_insert(rng.gen_range(0, site2.text.len() + 1), s2.next().unwrap());
                 site1.apply(op);
-
             }
         }
         assert_eq!(site1.text, site2.text);
     }
-   
+
     #[derive(Clone)]
     struct OperationList(pub Vec<Op>);
 
-    use quickcheck::{Gen, Arbitrary};
+    use quickcheck::{Arbitrary, Gen};
 
     impl Arbitrary for OperationList {
         fn arbitrary<G: Gen>(g: &mut G) -> OperationList {
@@ -112,44 +111,55 @@ mod test {
             };
 
             let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, g.gen()) };
-            let ops = (0..size).map(|ix| {
-                if g.gen() {
-                    site1.local_insert(g.gen_range(0, site1.text.len() + 1), g.gen())
-                } else {
-                    site1.local_delete(g.gen_range(0, site1.text.len()))
-                }
-            }).collect::<Vec::<Op>>();
+            let ops = (0..size)
+                .map(|ix| {
+                    if g.gen() {
+                        site1.local_insert(g.gen_range(0, site1.text.len() + 1), g.gen())
+                    } else {
+                        site1.local_delete(g.gen_range(0, site1.text.len()))
+                    }
+                })
+                .collect::<Vec<Op>>();
             OperationList(ops)
-        } 
+        }
         // implement shrinking ://
     }
-   
+
     #[test]
-    fn prop_inserts_and_deletes () {
+    fn prop_inserts_and_deletes() {
         let mut rng = quickcheck::StdThreadGen::new(1000);
         let mut op1 = OperationList::arbitrary(&mut rng).0.into_iter();
         let mut op2 = OperationList::arbitrary(&mut rng).0.into_iter();
 
         let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 0) };
         let mut site2 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 1) };
-        
-        let mut s1_empty = false; 
+
+        let mut s1_empty = false;
         let mut s2_empty = false;
-        while !s1_empty && !s2_empty { 
+        while !s1_empty && !s2_empty {
             if rng.gen() {
                 match op1.next() {
-                    Some(o) => { site1.apply(o.clone()); site2.apply(o); }
-                    None => { s1_empty = true; }
+                    Some(o) => {
+                        site1.apply(o.clone());
+                        site2.apply(o);
+                    }
+                    None => {
+                        s1_empty = true;
+                    }
                 }
             } else {
                 match op2.next() {
-                    Some(o) => { site1.apply(o.clone()); site2.apply(o); }
-                    None => { s2_empty = true; }
+                    Some(o) => {
+                        site1.apply(o.clone());
+                        site2.apply(o);
+                    }
+                    None => {
+                        s2_empty = true;
+                    }
                 }
             }
         }
 
         assert_eq!(site1.text, site2.text);
     }
-
 }

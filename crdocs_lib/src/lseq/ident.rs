@@ -43,7 +43,7 @@ impl IdentGen {
         loop {
             match (p.path.get(depth), q.path.get(depth)) {
                 // Our descent continues...
-                (Some(a), Some(b)) if a == b => { }
+                (Some(a), Some(b)) if a == b => {}
                 // We found a gap between the two identifiers
                 (Some(a), Some(b)) if a.0 + 1 < b.0 => {
                     // great! let's allocate an identifier at this depth then
@@ -55,10 +55,14 @@ impl IdentGen {
                 // This means we can allocate a node in the range a..max_for_depth
                 // If there isn't room at this level because _a = max_for_depth then we'll keep
                 // searching below.
-                (Some(_a), _) => { return self.alloc_with_lower(p, depth + 1); }
+                (Some(_a), _) => {
+                    return self.alloc_with_lower(p, depth + 1);
+                }
                 // Because the upper bound is zero, we're forced to create a path with zeros until
                 // the upper bound is either empty or non-zero
-                (None, Some(b)) => { return self.alloc_with_upper(p, q, depth); }
+                (None, Some(b)) => {
+                    return self.alloc_with_upper(p, q, depth);
+                }
 
                 // The two paths are fully equal which means that the site_ids MUST be different or
                 // we are in an invalid situation
@@ -84,7 +88,7 @@ impl IdentGen {
                 _ => break,
             }
             depth += 1;
-        };
+        }
 
         // If we actually ran out of upper bound values then we're free to choose
         // anything on the next level, otherwise use the upper bound we've found.
@@ -107,7 +111,7 @@ impl IdentGen {
                     let next_index = self.index_in_range(*ix + 1, self.width_at(lower_bound), lower_bound as u32);
                     return self.push_index(p, next_index);
                 }
-                Some(_) => { }
+                Some(_) => {}
                 None => {
                     let next_index = self.index_in_range(1, self.width_at(lower_bound), lower_bound as u32);
                     return self.push_index(p, next_index);
@@ -115,7 +119,6 @@ impl IdentGen {
             }
             lower_bound += 1;
         }
-
     }
 
     fn replace_last(&mut self, p: &Identifier, depth: usize, ix: usize) -> Identifier {
@@ -162,7 +165,7 @@ impl IdentGen {
 #[cfg(test)]
 mod test {
     use super::*;
-    use quickcheck::{TestResult, Gen, Arbitrary};
+    use quickcheck::{Arbitrary, Gen, TestResult};
 
     impl Arbitrary for Identifier {
         fn arbitrary<G: Gen>(g: &mut G) -> Identifier {
@@ -172,19 +175,21 @@ mod test {
 
     #[quickcheck]
     fn prop_alloc(p: Identifier, q: Identifier) -> TestResult {
-        if p >= q || p.path.len() == 0 || q.path.len() == 0 { return TestResult::discard(); }
+        if p >= q || p.path.len() == 0 || q.path.len() == 0 {
+            return TestResult::discard();
+        }
         let mut gen = IdentGen::new();
         let z = gen.alloc(&p, &q);
 
         TestResult::from_bool(p < z && z < q)
-
     }
+
     #[test]
     fn test_alloc_eq_path() {
         let mut gen = IdentGen::new();
 
-        let x = Identifier { path: vec![(1, 0), (1, 0)]};
-        let y = Identifier { path: vec![(1, 0), (1, 1)]};
+        let x = Identifier { path: vec![(1, 0), (1, 0)] };
+        let y = Identifier { path: vec![(1, 0), (1, 1)] };
         gen.alloc(&x, &y);
         let b = gen.alloc(&x, &y);
         // println!("{:?} {:?} {:?}", x, b, y);
@@ -195,8 +200,8 @@ mod test {
     #[test]
     fn test_different_len_paths() {
         let mut gen = IdentGen::new();
-        let x = Identifier { path: vec![(1, 0)]};
-        let y = Identifier { path: vec![(1, 0), (15,0)]};
+        let x = Identifier { path: vec![(1, 0)] };
+        let y = Identifier { path: vec![(1, 0), (15, 0)] };
 
         let z = gen.alloc(&x, &y);
 
@@ -207,18 +212,18 @@ mod test {
     #[test]
     fn test_alloc() {
         let mut gen = IdentGen::new();
-        let a = Identifier { path: vec![(1, 0)]};
-        let b = Identifier { path: vec![(3, 0)]};
+        let a = Identifier { path: vec![(1, 0)] };
+        let b = Identifier { path: vec![(3, 0)] };
 
         assert_eq!(gen.alloc(&a, &b), Identifier { path: vec![(2, 0)] });
 
-        let c = Identifier { path: vec![(1, 0), (0, 0), (1, 0)]};
-        let d = Identifier { path: vec![(1, 0), (0, 0), (3, 0)]};
+        let c = Identifier { path: vec![(1, 0), (0, 0), (1, 0)] };
+        let d = Identifier { path: vec![(1, 0), (0, 0), (3, 0)] };
 
-        assert_eq!(gen.alloc(&c, &d), Identifier { path: vec![(1, 0), (0,0), (2,0)] });
+        assert_eq!(gen.alloc(&c, &d), Identifier { path: vec![(1, 0), (0, 0), (2, 0)] });
 
-        let e = Identifier { path: vec![(1, 0)]};
-        let f = Identifier { path: vec![(2, 0)]};
+        let e = Identifier { path: vec![(1, 0)] };
+        let f = Identifier { path: vec![(2, 0)] };
 
         let res = gen.alloc(&e, &f);
 
@@ -227,8 +232,8 @@ mod test {
         {
             let mut gen = IdentGen::new_with_args(INITIAL_BASE, 1);
 
-            let a = Identifier { path: vec![(4, 0), (4, 0)]};
-            let b = Identifier { path: vec![(4, 0), (4, 0), (1, 1)]};
+            let a = Identifier { path: vec![(4, 0), (4, 0)] };
+            let b = Identifier { path: vec![(4, 0), (4, 0), (1, 1)] };
             // let a = Identifier { path: vec![(4, 0)]};
             // let b = Identifier { path: vec![(4, 1)]};
 
@@ -238,15 +243,14 @@ mod test {
             assert!(c < b);
         }
         {
-            let a = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0)]};
-            let b = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)]};
+            let a = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0)] };
+            let b = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)] };
 
             let c = gen.alloc(&a, &b);
             println!("{:?}", c);
             assert!(a < c);
             assert!(c < b);
         }
-
     }
 
     #[test]
@@ -254,6 +258,4 @@ mod test {
         let mut gen = IdentGen::new();
         assert_eq!(gen.index_in_range(0, 1, 1), 0);
     }
-
-
 }
