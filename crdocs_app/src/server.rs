@@ -7,7 +7,6 @@ impl Signalling {
     pub fn start(&mut self) -> () {
         listen("0.0.0.0:3031", |out| {
             move |msg| {
-                println!("MESSAGE RECIEVED");
                 out.broadcast(msg)
             }
         })

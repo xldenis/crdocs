@@ -1,28 +1,30 @@
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
-const BOUNDARY: usize = 10;
+const BOUNDARY: u64 = 10;
 
 pub const INITIAL_BASE: u32 = 3; // start with 2^8
 
-#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone)]
+#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize)]
 pub struct Identifier {
-    path: Vec<(usize, u64)>,
+    path: Vec<(u64, u32)>,
     // site_id: u64,
     // counter: u64
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct IdentGen {
     initial_base_bits: u32,
-    site_id: u64,
+    site_id: u32,
     // clock: u64
 }
 
 impl IdentGen {
-    pub fn new() -> IdentGen {
-        Self::new_with_args(INITIAL_BASE, 0)
+    pub fn new(site_id: u32) -> IdentGen {
+        Self::new_with_args(INITIAL_BASE, site_id)
     }
 
-    pub fn new_with_args(base: u32, site_id: u64) -> IdentGen {
+    pub fn new_with_args(base: u32, site_id: u32) -> IdentGen {
         IdentGen { initial_base_bits: base, site_id: site_id }
     }
 
@@ -31,7 +33,7 @@ impl IdentGen {
     }
 
     pub fn upper(&self) -> Identifier {
-        Identifier { path: vec![(2usize.pow(self.initial_base_bits) - 1, 0)] }
+        Identifier { path: vec![(2u64.pow(self.initial_base_bits) - 1, 0)] }
     }
     /// Allocates a new identifier between p and q.
     /// Requires that p < q and will produce a new identifier z, p < z < q
@@ -60,14 +62,14 @@ impl IdentGen {
                 }
                 // Because the upper bound is zero, we're forced to create a path with zeros until
                 // the upper bound is either empty or non-zero
-                (None, Some(b)) => {
+                (None, Some(_b)) => {
                     return self.alloc_with_upper(p, q, depth);
                 }
 
                 // The two paths are fully equal which means that the site_ids MUST be different or
                 // we are in an invalid situation
                 (None, None) => {
-                    let max_for_depth = 2usize.pow(self.initial_base_bits + depth as u32) - 1;
+                    let max_for_depth = 2u64.pow(self.initial_base_bits + depth as u32) - 1;
                     let next_index = self.index_in_range(1, max_for_depth, depth as u32);
                     return self.push_index(p, next_index);
                 }
@@ -121,27 +123,27 @@ impl IdentGen {
         }
     }
 
-    fn replace_last(&mut self, p: &Identifier, depth: usize, ix: usize) -> Identifier {
+    fn replace_last(&mut self, p: &Identifier, depth: usize, ix: u64) -> Identifier {
         let mut ident = p.clone();
         ident.path.truncate(depth);
         ident.path.push((ix, self.site_id));
         return ident;
     }
 
-    fn push_index(&mut self, p: &Identifier, ix: usize) -> Identifier {
+    fn push_index(&mut self, p: &Identifier, ix: u64) -> Identifier {
         let mut ident = p.clone();
         ident.path.push((ix, self.site_id));
         return ident;
     }
 
-    fn width_at(&self, depth: usize) -> usize {
-        2usize.pow(self.initial_base_bits + depth as u32)
+    fn width_at(&self, depth: usize) -> u64 {
+        2u64.pow(self.initial_base_bits + depth as u32)
     }
     // Generate an index in a given range at the specified depth.
     // Uses the allocation strategy of that depth, boundary+ or boundary- which is biased to the
     // lower and upper ends of the range respectively.
     // should allocate in the range [lower, upper)
-    fn index_in_range(&mut self, lower: usize, upper: usize, depth: u32) -> usize {
+    fn index_in_range(&mut self, lower: u64, upper: u64, depth: u32) -> u64 {
         assert!(lower < upper, "need at least one space between the bounds lower={} upper={}", lower, upper);
 
         let mut rng = rand::thread_rng();
@@ -169,7 +171,7 @@ mod test {
 
     impl Arbitrary for Identifier {
         fn arbitrary<G: Gen>(g: &mut G) -> Identifier {
-            Identifier { path: Vec::<(usize, u64)>::arbitrary(g) }
+            Identifier { path: Vec::<(u64, u32)>::arbitrary(g) }
         }
     }
 
@@ -178,7 +180,7 @@ mod test {
         if p >= q || p.path.len() == 0 || q.path.len() == 0 {
             return TestResult::discard();
         }
-        let mut gen = IdentGen::new();
+        let mut gen = IdentGen::new(0);
         let z = gen.alloc(&p, &q);
 
         TestResult::from_bool(p < z && z < q)
@@ -186,7 +188,7 @@ mod test {
 
     #[test]
     fn test_alloc_eq_path() {
-        let mut gen = IdentGen::new();
+        let mut gen = IdentGen::new(0);
 
         let x = Identifier { path: vec![(1, 0), (1, 0)] };
         let y = Identifier { path: vec![(1, 0), (1, 1)] };
@@ -199,7 +201,7 @@ mod test {
 
     #[test]
     fn test_different_len_paths() {
-        let mut gen = IdentGen::new();
+        let mut gen = IdentGen::new(0);
         let x = Identifier { path: vec![(1, 0)] };
         let y = Identifier { path: vec![(1, 0), (15, 0)] };
 
@@ -211,7 +213,7 @@ mod test {
 
     #[test]
     fn test_alloc() {
-        let mut gen = IdentGen::new();
+        let mut gen = IdentGen::new(0);
         let a = Identifier { path: vec![(1, 0)] };
         let b = Identifier { path: vec![(3, 0)] };
 
@@ -255,7 +257,7 @@ mod test {
 
     #[test]
     fn test_index_in_range() {
-        let mut gen = IdentGen::new();
+        let mut gen = IdentGen::new(0);
         assert_eq!(gen.index_in_range(0, 1, 1), 0);
     }
 }

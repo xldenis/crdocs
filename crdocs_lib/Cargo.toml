@@ -11,13 +11,18 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
 crdts = "*"
 rand = "*"
 ws_stream_wasm = "*"
 wasm-bindgen-futures = "0.4.8"
 futures = "^0.3"
 console_error_panic_hook = { version = "0.1", optional = true }
+serde = "*"
+wasm-timer = "*"
+serde_json = "*"
+getrandom = { version = "*", features = [ "wasm-bindgen"] }
+gloo-events = "*"
 
 [dependencies.web-sys]
   version = "0.3"
@@ -26,6 +31,9 @@ console_error_panic_hook = { version = "0.1", optional = true }
     "RtcSessionDescription",
     "RtcSessionDescriptionInit",
     "RtcSdpType",
+    "RtcPeerConnectionIceEvent",
+    "RtcIceCandidate",
+    "RtcIceCandidateIni,
   ]
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -41,7 +49,7 @@ console_error_panic_hook = { version = "0.1.1", optional = true }
 wee_alloc = { version = "0.4.2", optional = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.2"
+wasm-bindgen-test = "^0.3"
 quickcheck ="*"
 quickcheck_macros = "*"
 

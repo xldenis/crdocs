@@ -1,20 +1,25 @@
 pub mod ident;
 
 use ident::*;
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct LSeq {
-    text: Vec<(Identifier, u64)>, // gen: NameGenerator
+    text: Vec<(Identifier, char)>, // gen: NameGenerator
     gen: IdentGen,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Op {
-    Insert(Identifier, u64),
+    Insert(Identifier, char),
     Delete(Identifier),
 }
 
 impl LSeq {
-    pub fn do_insert(&mut self, ix: Identifier, c: u64) {
+    pub fn new(id: u32) -> Self {
+        LSeq { text: Vec::new(), gen: IdentGen::new(id) }
+    }
+    pub fn do_insert(&mut self, ix: Identifier, c: char) {
         // Inserts only have an impact if the identifier is in the tree
         if let Err(res) = self.text.binary_search_by(|e| e.0.cmp(&ix)) {
             self.text.insert(res, (ix, c));
@@ -53,9 +58,9 @@ impl LSeq {
             assert!(&a < next);
             a
         };
-        self.do_insert(ix_ident.clone(), c as u64);
+        self.do_insert(ix_ident.clone(), c);
 
-        Op::Insert(ix_ident, c as u64)
+        Op::Insert(ix_ident, c)
     }
 
     pub fn local_delete(&mut self, ix: usize) -> Op {
@@ -64,6 +69,10 @@ impl LSeq {
         self.do_delete(ident.clone());
 
         Op::Delete(ident.clone())
+    }
+
+    pub fn text(&self) -> String {
+        self.text.iter().map(|(_, c)| c).collect::<String>()
     }
 }
 
@@ -112,7 +121,7 @@ mod test {
 
             let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, g.gen()) };
             let ops = (0..size)
-                .map(|ix| {
+                .map(|_| {
                     if g.gen() {
                         site1.local_insert(g.gen_range(0, site1.text.len() + 1), g.gen())
                     } else {
