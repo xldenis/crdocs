@@ -104,7 +104,7 @@ impl WebRtc {
     pub async fn add_ice_candidate(&mut self, cand: RtcPeerConnectionIceEvent) -> Result<(), Err> {
         if let Some(c) = cand.candidate() {
             JsFuture::from(self.inner.add_ice_candidate_with_opt_rtc_ice_candidate(Some(&c))).await.map_err(|_| ())?;
-        } 
+        }
         Ok(())
 
     }
@@ -209,11 +209,11 @@ mod test {
         let _ = rtc1.handle_answer(ans);
 
         let candidate = rtc1.ice_candidates().next().await.unwrap();
-        
+
         rtc2.add_ice_candidate(candidate).await.unwrap();
-        let candidate = rtc2.ice_candidates().next().await.unwrap(); 
+        let candidate = rtc2.ice_candidates().next().await.unwrap();
 
         rtc1.add_ice_candidate(candidate).await.unwrap();
-        
+
     }
 }
