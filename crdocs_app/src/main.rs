@@ -1,9 +1,7 @@
 pub mod server;
 
-extern crate ws;
-
 fn main() {
-    let mut signaller = server::Signalling {};
+    let mut signaller = server::Signalling { clients: Vec::new() };
 
     signaller.start()
 }

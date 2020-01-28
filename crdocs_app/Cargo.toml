@@ -8,4 +8,7 @@ edition = "2018"
 
 [dependencies]
 
-ws = "*"
+tungstenite = "*"
+async-std = "*"
+futures = "^0.3"
+async-tungstenite = "*"
