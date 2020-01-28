@@ -52,9 +52,9 @@ jobs:
         key: ${{ runner.os }}-wasm-pack-target-${{ hashFiles('**/Cargo.lock') }}
         
     - name: Build (WASM)
-      run: wasm-pack build --verbose
+      run: wasm-pack build 
       working-directory: ./crdocs_lib
    
     - name: Run tests (WASM)
-      run: wasm-pack test --verbose
+      run: wasm-pack test
       working-directory: ./crdocs_lib
