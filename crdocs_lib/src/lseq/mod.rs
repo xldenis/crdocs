@@ -47,7 +47,6 @@ impl LSeq {
         // append!
         let ix_ident = if self.text.len() <= ix {
             let prev = self.text.last().map(|(i, _)| i).unwrap_or_else(|| &lower);
-            println!("append!");
             self.gen.alloc(prev, &upper)
         } else {
             let prev = self.text.get(ix).map(|(i, _)| i).unwrap();
@@ -65,7 +64,6 @@ impl LSeq {
 
     pub fn local_delete(&mut self, ix: usize) -> Op {
         let ident = self.text[ix].0.clone();
-
         self.do_delete(ident.clone());
 
         Op::Delete(ident.clone())
@@ -116,13 +114,13 @@ mod test {
         fn arbitrary<G: Gen>(g: &mut G) -> OperationList {
             let size = {
                 let s = g.size();
-                g.gen_range(0, s)
+                if s == 0 { 0 } else { g.gen_range(0, s) }
             };
 
             let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, g.gen()) };
             let ops = (0..size)
                 .map(|_| {
-                    if g.gen() {
+                    if g.gen() || site1.text.len() == 0 {
                         site1.local_insert(g.gen_range(0, site1.text.len() + 1), g.gen())
                     } else {
                         site1.local_delete(g.gen_range(0, site1.text.len()))
