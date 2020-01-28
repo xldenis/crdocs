@@ -56,5 +56,5 @@ jobs:
       working-directory: ./crdocs_lib
    
     - name: Run tests (WASM)
-      run: wasm-pack test
+      run: wasm-pack test --firefox --headless
       working-directory: ./crdocs_lib
