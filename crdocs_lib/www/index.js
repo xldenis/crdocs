@@ -1,3 +1,4 @@
 import * as wasm from "crdocs";
 
-wasm.client();
+const p = new URLSearchParams(window.location.search);
+wasm.test_webrtc_conn(p.get('id'));

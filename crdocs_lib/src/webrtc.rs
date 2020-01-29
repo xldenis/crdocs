@@ -2,8 +2,11 @@ use gloo_events::*;
 
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    RtcPeerConnection, RtcPeerConnectionIceEvent, RtcSdpType, RtcSessionDescription, RtcSessionDescriptionInit, RtcIceCandidateInit,
+    RtcIceCandidate, RtcPeerConnection, RtcPeerConnectionIceEvent, RtcSdpType, RtcSessionDescription,
+    RtcSessionDescriptionInit, RtcIceCandidateInit
 };
+
+pub use web_sys::{RtcIceConnectionState, RtcIceGatheringState, RtcDataChannel};
 
 use std::rc::*;
 pub struct WebRtc {
@@ -35,7 +38,7 @@ pub enum SdpType {
     Answer(String),
 }
 
-type Err = ();
+type Err = js_sys::Error;
 use wasm_bindgen::JsCast;
 
 impl WebRtc {
@@ -61,24 +64,24 @@ impl WebRtc {
 
     /// Create an offer and set the local description to match
     pub async fn create_offer(&self) -> Result<String, Err> {
-        let create_offer = JsFuture::from(self.inner.create_offer()).await.map_err(|_| ())?;
+        let create_offer = JsFuture::from(self.inner.create_offer()).await?; 
         let offer = RtcSessionDescription::from(create_offer).sdp();
         let mut desc = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
         desc.sdp(&offer);
 
-        JsFuture::from(self.inner.set_local_description(&desc)).await.map_err(|_| ())?;
+        JsFuture::from(self.inner.set_local_description(&desc)).await?;
 
         Ok(offer)
     }
 
     /// Create an answer to respond to an offer
     pub async fn create_answer(&self) -> Result<String, Err> {
-        let answer = JsFuture::from(self.inner.create_answer()).await.map_err(|_| ())?;
+        let answer = JsFuture::from(self.inner.create_answer()).await?;
         let answer = RtcSessionDescription::from(answer).sdp();
         let mut desc = RtcSessionDescriptionInit::new(RtcSdpType::Answer);
         desc.sdp(&answer);
 
-        JsFuture::from(self.inner.set_local_description(&desc)).await.map_err(|_| ())?;
+        JsFuture::from(self.inner.set_local_description(&desc)).await?;
         Ok(answer)
     }
 
@@ -96,19 +99,29 @@ impl WebRtc {
             }
         };
 
-        JsFuture::from(self.inner.set_remote_description(&desc)).await.map_err(|_| ())?;
+        JsFuture::from(self.inner.set_remote_description(&desc)).await?;
 
         Ok(())
     }
 
-    pub async fn add_ice_candidate(&mut self, cand: RtcPeerConnectionIceEvent) -> Result<(), Err> {
-        if let Some(c) = cand.candidate() {
-            JsFuture::from(self.inner.add_ice_candidate_with_opt_rtc_ice_candidate(Some(&c))).await.map_err(|_| ())?;
-        }
+    pub async fn add_ice_candidate(&mut self, cand: RtcIceCandidateInit) -> Result<(), Err> {
+        JsFuture::from(self.inner.add_ice_candidate_with_opt_rtc_ice_candidate_init(Some(&cand))).await?;
         Ok(())
-
     }
 
+    pub fn ice_connection_state(&self) -> RtcIceConnectionState {
+        self.inner.ice_connection_state()
+    }
+
+    pub fn ice_gathering_state(&self) -> RtcIceGatheringState {
+        self.inner.ice_gathering_state()
+    }
+    
+    /// Create a DataChannel. In WASM all channels need to be created before the connection is
+    /// opened. 
+    pub fn create_data_channel(&self, name: &str) -> RtcDataChannel {
+        self.inner.create_data_channel(name)
+    }
 }
 
 use futures::channel::mpsc;
@@ -118,7 +131,7 @@ use futures::channel::mpsc::*;
 pub struct SimplePeer {
     conn: WebRtc,
     //
-    pub recv: mpsc::UnboundedReceiver<RtcPeerConnectionIceEvent>,
+    pub recv: mpsc::UnboundedReceiver<RtcIceCandidate>,
     //send: mpsc::UnboundedSender<RtcPeerConnectionIceEvent>,
 }
 
@@ -128,8 +141,16 @@ impl SimplePeer {
         let (tx, rx) = mpsc::unbounded();
 
         let peer = tx.clone();
-        rtc_conn.register_on_ice(move |ice_candidate| {
-            peer.unbounded_send(ice_candidate.clone()).unwrap();
+        rtc_conn.register_on_ice(move |ice_candidate : &RtcPeerConnectionIceEvent | {
+
+            match ice_candidate.candidate() {
+                Some(c) => {
+                    peer.unbounded_send(c).unwrap();
+                }
+                None => { 
+                    peer.close_channel()
+                },
+            };
         });
 
         Ok(SimplePeer {
@@ -151,16 +172,26 @@ impl SimplePeer {
         self.conn.set_remote_description(SdpType::Answer(ans)).await
     }
 
-    pub fn ice_candidates(&mut self) -> &mut UnboundedReceiver<RtcPeerConnectionIceEvent> {
+    pub fn ice_candidates(&mut self) -> &mut UnboundedReceiver<RtcIceCandidate> {
         &mut self.recv
     }
 
-    pub async fn add_ice_candidate(&mut self, cand: RtcPeerConnectionIceEvent) -> Result<(), ()> {
+    pub async fn add_ice_candidate(&mut self, cand: RtcIceCandidateInit) -> Result<(), Err> {
         self.conn.add_ice_candidate(cand).await
     }
-}
 
-use futures::stream::StreamExt;
+    pub fn ice_connection_state(&self) -> RtcIceConnectionState {
+        self.conn.ice_connection_state()
+    }
+
+    pub fn ice_gathering_state(&self) -> RtcIceGatheringState {
+        self.conn.ice_gathering_state()
+    }
+
+    pub fn create_data_channel(&self, name: &str) -> RtcDataChannel {
+        self.conn.create_data_channel(name)
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -200,20 +231,12 @@ mod test {
 
     #[wasm_bindgen_test]
     async fn test_simple_peer() {
-        let mut rtc1 = SimplePeer::new().unwrap();
-        let mut rtc2 = SimplePeer::new().unwrap();
+        let mut rtc1 = SimplePeer::new().expect("create simplepeer");
+        let mut rtc2 = SimplePeer::new().expect("create simplepeer");
 
-        let off = rtc1.create_offer().await.unwrap();
-        let ans = rtc2.handle_offer(off).await.unwrap();
+        let off = rtc1.create_offer().await.expect("create offer");
+        let ans = rtc2.handle_offer(off).await.expect("handle offer");
 
         let _ = rtc1.handle_answer(ans);
-
-        let candidate = rtc1.ice_candidates().next().await.unwrap();
-
-        rtc2.add_ice_candidate(candidate).await.unwrap();
-        let candidate = rtc2.ice_candidates().next().await.unwrap();
-
-        rtc1.add_ice_candidate(candidate).await.unwrap();
-
     }
 }

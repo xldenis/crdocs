@@ -200,6 +200,7 @@ dependencies = [
  "futures 0.3.1",
  "getrandom",
  "gloo-events",
+ "js-sys",
  "quickcheck",
  "quickcheck_macros",
  "rand",

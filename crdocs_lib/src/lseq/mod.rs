@@ -114,7 +114,11 @@ mod test {
         fn arbitrary<G: Gen>(g: &mut G) -> OperationList {
             let size = {
                 let s = g.size();
-                if s == 0 { 0 } else { g.gen_range(0, s) }
+                if s == 0 {
+                    0
+                } else {
+                    g.gen_range(0, s)
+                }
             };
 
             let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, g.gen()) };

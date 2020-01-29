@@ -22,30 +22,6 @@ use {
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-#[wasm_bindgen]
-extern "C" {
-    fn alert(s: &str);
-}
-
-#[wasm_bindgen]
-pub fn greet() {
-    alert("Hello, crdsssocs!");
-}
-
-#[wasm_bindgen]
-pub fn greet3() {
-    alert("Hello, crdsssocs!");
-}
-
-#[wasm_bindgen]
-pub fn new_lseq() -> JsValue {
-    JsValue::from_serde(&lseq::LSeq::new(0)).unwrap()
-}
-#[wasm_bindgen]
-pub fn lseq_from_js(val: &JsValue) {
-    let _l: lseq::LSeq = val.into_serde().unwrap();
-}
-
 use core::time::Duration;
 use std::cell::*;
 use std::rc::*;
@@ -63,13 +39,96 @@ macro_rules! enclose {
 }
 use std::panic;
 // use serde::{Deserialize, Serialize};
+
+#[wasm_bindgen]
+pub async fn test_webrtc_conn(site_id: u32) {
+    use webrtc::*;
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+    let sender: bool = site_id == 1;
+    web_sys::console::log_2(&"sender=%d".into(), &sender.into());
+    let (_, wsio) = WsStream::connect("ws://127.0.0.1:3012", None).await.expect_throw("assume the connection succeeds");
+
+    wasm_timer::Delay::new(Duration::from_millis(2000)).await.unwrap();
+
+    let (mut sink, mut stream) = wsio.split();
+
+    let mut peer = SimplePeer::new().unwrap();
+    let dc = peer.create_data_channel("peer-connection");
+
+    // LETS DO THE WEBRTC DANCE
+    if sender {
+        // 1. Create an offer
+        let off = peer.create_offer().await.unwrap();
+        sink.send(WsMessage::Text(off)).await.unwrap();
+
+        // 4. Handle answer
+        if let WsMessage::Text(ans) = stream.next().await.unwrap() {
+            peer.handle_answer(ans).await.unwrap();
+        }
+    } else {
+        // 2. Handle the offer
+        if let WsMessage::Text(off) = stream.next().await.unwrap() {
+            let ans = peer.handle_offer(off).await.unwrap();
+            // 3. Create an answer
+            sink.send(WsMessage::Text(ans)).await.unwrap();
+        }
+    }
+
+    // 5. Exchange ICE candidates!
+
+    use js_sys::JSON;
+    use std::sync::{RwLock, Mutex};
+    let peer = Rc::new(Mutex::new(peer));
+
+    let local_peer = peer.clone();
+    spawn_local(async move {
+        while let Some(c) = local_peer.lock().unwrap().ice_candidates().next().await {
+            web_sys::console::log_1(&"NEW CANDIDATE SENT".into());
+
+            match JSON::stringify(&c.into()) {
+                Err(_) => {}
+                Ok(m) => { 
+                    sink.send(WsMessage::Text(m.as_string().unwrap())).await.unwrap();
+                }
+            };
+        }
+    });
+
+    let local_peer = peer.clone();
+    spawn_local(async move {
+        while let Some(WsMessage::Text(c)) = stream.next().await {
+            web_sys::console::log_1(&"NEW CANDIDATE RECEIVED".into());
+            let js = JSON::parse(&c).unwrap();
+            use wasm_bindgen::JsCast;
+            let cand : web_sys::RtcIceCandidateInit = js.clone().dyn_into().unwrap();
+            let mut peer = local_peer.lock().unwrap();
+            match peer.ice_connection_state() {
+                RtcIceConnectionState::Connected => {
+                    web_sys::console::log_1(&"omgomgomgomgomgomg".into());
+                    break;
+                }
+                _ => {
+                    web_sys::console::log_1(&"ADDING".into());
+                    web_sys::console::log_1(&cand.clone().into());
+                    peer.add_ice_candidate(cand).await.expect("did not add")
+                }
+            }
+        }
+    });
+    
+    let mut i = Interval::new(Duration::from_millis(250));
+    while let Some(_) = i.next().await {
+        web_sys::console::log_1(&peer.lock().unwrap().ice_connection_state().into());
+    } 
+    web_sys::console::log_1(&"omgomgomgomgomgomg".into());
+}
 #[wasm_bindgen]
 pub async fn client(site_id: u32) {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let lseq = Rc::new(RefCell::new(LSeq::new(site_id)));
     web_sys::console::log_2(&"%d".into(), &site_id.into());
 
-    let (_, wsio) = WsStream::connect("ws://127.0.0.1:3031", None).await.expect_throw("assume the connection succeeds");
+    let (_, wsio) = WsStream::connect("ws://127.0.0.1:3012", None).await.expect_throw("assume the connection succeeds");
 
     wasm_timer::Delay::new(Duration::from_millis(1000)).await.unwrap();
 
