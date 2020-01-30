@@ -1,6 +1,7 @@
 pub mod lseq;
 mod utils;
 
+pub mod causal;
 pub mod webrtc;
 
 #[cfg(test)]
@@ -77,7 +78,7 @@ pub async fn test_webrtc_conn(site_id: u32) {
     // 5. Exchange ICE candidates!
 
     use js_sys::JSON;
-    use std::sync::{RwLock, Mutex};
+    use std::sync::{Mutex, RwLock};
     let peer = Rc::new(Mutex::new(peer));
 
     let local_peer = peer.clone();
@@ -87,7 +88,7 @@ pub async fn test_webrtc_conn(site_id: u32) {
 
             match JSON::stringify(&c.into()) {
                 Err(_) => {}
-                Ok(m) => { 
+                Ok(m) => {
                     sink.send(WsMessage::Text(m.as_string().unwrap())).await.unwrap();
                 }
             };
@@ -100,7 +101,7 @@ pub async fn test_webrtc_conn(site_id: u32) {
             web_sys::console::log_1(&"NEW CANDIDATE RECEIVED".into());
             let js = JSON::parse(&c).unwrap();
             use wasm_bindgen::JsCast;
-            let cand : web_sys::RtcIceCandidateInit = js.clone().dyn_into().unwrap();
+            let cand: web_sys::RtcIceCandidateInit = js.clone().dyn_into().unwrap();
             let mut peer = local_peer.lock().unwrap();
             match peer.ice_connection_state() {
                 RtcIceConnectionState::Connected => {
@@ -115,11 +116,11 @@ pub async fn test_webrtc_conn(site_id: u32) {
             }
         }
     });
-    
+
     let mut i = Interval::new(Duration::from_millis(250));
     while let Some(_) = i.next().await {
         web_sys::console::log_1(&peer.lock().unwrap().ice_connection_state().into());
-    } 
+    }
     web_sys::console::log_1(&"omgomgomgomgomgomg".into());
 }
 #[wasm_bindgen]

@@ -2,11 +2,11 @@ use gloo_events::*;
 
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    RtcIceCandidate, RtcPeerConnection, RtcPeerConnectionIceEvent, RtcSdpType, RtcSessionDescription,
-    RtcSessionDescriptionInit, RtcIceCandidateInit
+    RtcIceCandidate, RtcIceCandidateInit, RtcPeerConnection, RtcPeerConnectionIceEvent, RtcSdpType,
+    RtcSessionDescription, RtcSessionDescriptionInit,
 };
 
-pub use web_sys::{RtcIceConnectionState, RtcIceGatheringState, RtcDataChannel};
+pub use web_sys::{RtcDataChannel, RtcIceConnectionState, RtcIceGatheringState};
 
 use std::rc::*;
 pub struct WebRtc {
@@ -64,7 +64,7 @@ impl WebRtc {
 
     /// Create an offer and set the local description to match
     pub async fn create_offer(&self) -> Result<String, Err> {
-        let create_offer = JsFuture::from(self.inner.create_offer()).await?; 
+        let create_offer = JsFuture::from(self.inner.create_offer()).await?;
         let offer = RtcSessionDescription::from(create_offer).sdp();
         let mut desc = RtcSessionDescriptionInit::new(RtcSdpType::Offer);
         desc.sdp(&offer);
@@ -116,9 +116,9 @@ impl WebRtc {
     pub fn ice_gathering_state(&self) -> RtcIceGatheringState {
         self.inner.ice_gathering_state()
     }
-    
+
     /// Create a DataChannel. In WASM all channels need to be created before the connection is
-    /// opened. 
+    /// opened.
     pub fn create_data_channel(&self, name: &str) -> RtcDataChannel {
         self.inner.create_data_channel(name)
     }
@@ -141,15 +141,12 @@ impl SimplePeer {
         let (tx, rx) = mpsc::unbounded();
 
         let peer = tx.clone();
-        rtc_conn.register_on_ice(move |ice_candidate : &RtcPeerConnectionIceEvent | {
-
+        rtc_conn.register_on_ice(move |ice_candidate: &RtcPeerConnectionIceEvent| {
             match ice_candidate.candidate() {
                 Some(c) => {
                     peer.unbounded_send(c).unwrap();
                 }
-                None => { 
-                    peer.close_channel()
-                },
+                None => peer.close_channel(),
             };
         });
 

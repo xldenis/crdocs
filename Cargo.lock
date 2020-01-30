@@ -197,6 +197,7 @@ version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
  "crdts",
+ "derive_more",
  "futures 0.3.1",
  "getrandom",
  "gloo-events",
@@ -277,6 +278,17 @@ dependencies = [
  "autocfg 0.1.7",
  "cfg-if",
  "lazy_static",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2159be042979966de68315bce7034bb000c775f22e3e834e1c52ff78f041cae8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

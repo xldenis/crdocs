@@ -24,6 +24,7 @@ serde_json = "*"
 getrandom = { version = "*", features = [ "wasm-bindgen"] }
 gloo-events = "*"
 js-sys = "*"
+derive_more = "*"
 
 [dependencies.web-sys]
   version = "0.3"
