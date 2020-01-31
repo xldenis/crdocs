@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use async_std::task;
 use futures::channel::mpsc::*;
 
-use tungstenite::protocol::Message;
+use async_tungstenite::{tungstenite::Message};
 
 use async_std::net::{TcpListener, TcpStream, SocketAddr};
 use futures::{future, stream::{TryStreamExt, StreamExt}, pin_mut};
@@ -68,13 +68,11 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 }
 // Incredibly basic signalling server that just broadcasts every message to everyone
 impl Signalling {
-    pub fn start(&mut self) -> () {
-        task::block_on(async {
-            let server = TcpListener::bind("127.0.0.1:3012").await.unwrap();
-            let state = Arc::new(Mutex::new(HashMap::new())); 
-            while let Ok((stream, addr)) = server.accept().await {
-                task::spawn(handle_connection(state.clone(), stream, addr));
-            }
-        });
+    pub async fn start(&mut self) -> () {
+        let server = TcpListener::bind("127.0.0.1:3012").await.unwrap();
+        let state = Arc::new(Mutex::new(HashMap::new())); 
+        while let Ok((stream, addr)) = server.accept().await {
+            task::spawn(handle_connection(state.clone(), stream, addr));
+        }
     }
 }
