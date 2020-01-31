@@ -1,8 +1,8 @@
-pub mod lseq;
 mod utils;
-
+pub mod lseq;
 pub mod causal;
 pub mod webrtc;
+pub mod editor;
 
 #[cfg(test)]
 extern crate quickcheck;
