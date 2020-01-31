@@ -9,8 +9,8 @@ fn main() {
     let mut signaller = server::Signalling { clients: Vec::new() };
     use futures::future;
     let mut app = tide::new();
-    app.at("/assets/*path").get(StaticFiles::new("../crdocs_lib/www/dist"));
-    
+    app.at("/assets/*path").get(StaticFiles::new("../frontend/www/dist"));
+
     let x = async {
         println!("Starting static file server");
         app.listen("localhost:8080").await
@@ -23,6 +23,6 @@ fn main() {
 
     pin_mut!(x, s);
 
-    task::block_on(future::select(x, s)); 
+    task::block_on(future::select(x, s));
 
 }

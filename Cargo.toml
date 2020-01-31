@@ -1,5 +1,5 @@
 [workspace]
 members = [
-  "crdocs_app",
-  "crdocs_lib",
+  "backend",
+  "frontend",
 ]
