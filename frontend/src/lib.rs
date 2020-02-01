@@ -44,13 +44,15 @@ use crate::editor::*;
 
 #[wasm_bindgen]
 pub async fn test_network() {
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
     let (id, init_pr, io) = connect_and_get_id("").await.unwrap();
 
     web_sys::console::log_2(&"peer_id=%d".into(), &id.into());
 
-    let mut net = NetworkLayer::new(io).await;
+    let (mut net, rx) = NetworkLayer::new(io).await;
 
     web_sys::console::log_1(&"network started".into());
+
     if id != init_pr {
         web_sys::console::log_1(&"network started".into());
         net.connect_to_peer(init_pr).await;
@@ -69,7 +71,7 @@ pub async fn test_webrtc_conn(site_id: u32) {
 
     let (mut sink, mut stream) = wsio.split();
 
-    let mut peer = SimplePeer::new().unwrap();
+    let (mut peer, mut peer_events) = SimplePeer::new().unwrap();
     let dc = peer.create_data_channel("peer-connection");
 
     // LETS DO THE WEBRTC DANCE
@@ -97,9 +99,8 @@ pub async fn test_webrtc_conn(site_id: u32) {
     use std::sync::{Mutex, RwLock};
     let peer = Rc::new(Mutex::new(peer));
 
-    let local_peer = peer.clone();
     spawn_local(async move {
-        while let Some(c) = local_peer.lock().unwrap().ice_candidates().next().await {
+        while let Some(c) = peer_events.next().await {
             web_sys::console::log_1(&"NEW CANDIDATE SENT".into());
 
             match JSON::stringify(&c.into()) {

@@ -6,6 +6,7 @@ use web_sys::{
     RtcSessionDescription, RtcSessionDescriptionInit,
 };
 
+use wasm_bindgen::JsValue;
 pub use web_sys::{RtcDataChannel, RtcIceConnectionState, RtcIceGatheringState};
 
 use std::rc::*;
@@ -131,12 +132,11 @@ use futures::channel::mpsc::*;
 pub struct SimplePeer {
     conn: WebRtc,
     //
-    pub recv: mpsc::UnboundedReceiver<RtcIceCandidate>,
     //send: mpsc::UnboundedSender<RtcPeerConnectionIceEvent>,
 }
 
 impl SimplePeer {
-    pub fn new() -> Result<Self, wasm_bindgen::JsValue> {
+    pub fn new() -> Result<(Self, UnboundedReceiver<RtcIceCandidate>), wasm_bindgen::JsValue> {
         let mut rtc_conn = WebRtc::new()?;
         let (tx, rx) = mpsc::unbounded();
 
@@ -150,11 +150,13 @@ impl SimplePeer {
             };
         });
 
-        Ok(SimplePeer {
-            conn: rtc_conn,
-            recv: rx,
-            //send: tx,
-        })
+        Ok((
+            SimplePeer {
+                conn: rtc_conn,
+                //send: tx,
+            },
+            rx,
+        ))
     }
 
     pub async fn create_offer(&mut self) -> Result<String, Err> {
@@ -169,9 +171,9 @@ impl SimplePeer {
         self.conn.set_remote_description(SdpType::Answer(ans)).await
     }
 
-    pub fn ice_candidates(&mut self) -> &mut UnboundedReceiver<RtcIceCandidate> {
-        &mut self.recv
-    }
+    //pub fn ice_candidates(&mut self) -> &mut UnboundedReceiver<RtcIceCandidate> {
+    //   &mut self.recv
+    //}
 
     pub async fn add_ice_candidate(&mut self, cand: RtcIceCandidateInit) -> Result<(), Err> {
         self.conn.add_ice_candidate(cand).await
@@ -187,6 +189,30 @@ impl SimplePeer {
 
     pub fn create_data_channel(&self, name: &str) -> RtcDataChannel {
         self.conn.create_data_channel(name)
+    }
+}
+
+pub struct DataChannelStream {
+    pub chan: RtcDataChannel,
+    on_data: EventListener,
+    tx: UnboundedSender<JsValue>,
+    //rx : UnboundedReceiver<JsValue>,
+}
+
+impl DataChannelStream {
+    pub fn new(chan: RtcDataChannel) -> (Self, UnboundedReceiver<JsValue>) {
+        let (tx, rx) = unbounded();
+        let msg_tx = tx.clone();
+        let el = EventListener::new(&chan, "message", move |msg| {
+            let event = msg.dyn_ref::<web_sys::MessageEvent>().unwrap();
+            msg_tx.unbounded_send(event.data()).unwrap();
+        });
+
+        (DataChannelStream { chan: chan, on_data: el, tx: tx }, rx)
+    }
+
+    pub fn send(&mut self, msg: &str) -> Result<(), Err> {
+        Ok(self.chan.send_with_str(msg)?)
     }
 }
 
