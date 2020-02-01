@@ -12,6 +12,8 @@ use std::error;
 use wasm_bindgen::JsValue;
 use ws_stream_wasm::*;
 
+use log::*;
+
 pub async fn connect_and_get_id(_url: &str) -> Result<(u32, u32, WsIo), Box<error::Error>> {
     let (_, mut wsio) = WsStream::connect("ws://127.0.0.1:3012", None).await?;
 
@@ -89,10 +91,9 @@ impl NetworkLayer {
         while let Some(WsMessage::Text(msg)) = input_stream.next().await {
             use HandshakeProtocol::*;
 
-            log_1(&"RECV".into());
-
             match serde_json::from_str(&msg).unwrap() {
                 Sig { id, msg: Start {} } => {
+                    info!("received handshake start from {}", id);
                     // A peer just asked us to start a peer connection!
                     let (tx, rx) = unbounded();
 
@@ -104,16 +105,18 @@ impl NetworkLayer {
                         future::ok::<WsMessage, SendError>(WsMessage::Text(json))
                     });
                     // Spawn an async closure that will handle the handshake with this peer
-                    spawn_local(Self::handle_new_peer(self.clone(), true, rx, peer_sender));
+                    spawn_local(Self::handle_new_peer(self.clone(), true, rx, peer_sender, id));
                 }
                 Sig { id, msg } => {
                     match peer_signalling.get_mut(&id) {
                         Some(chan) => chan.send(msg).await.unwrap(),
                         None => {
+                            info!("received offer from {}", id);
                             // Create the signalling state machine for this peer
                             let (mut tx, rx) = unbounded();
 
                             peer_signalling.insert(id, tx.clone());
+
                             let peer_sender = self.signal.clone().with(move |msg: HandshakeProtocol| {
                                 let json = serde_json::to_string(&Sig { id, msg }).unwrap();
                                 future::ok::<WsMessage, SendError>(WsMessage::Text(json))
@@ -121,7 +124,7 @@ impl NetworkLayer {
 
                             // Set initiator to false, because in this state, we've just received an
                             // offer.
-                            spawn_local(Self::handle_new_peer(self.clone(), false, rx, peer_sender));
+                            spawn_local(Self::handle_new_peer(self.clone(), false, rx, peer_sender, id));
 
                             // Forward the message
                             tx.send(msg).await.unwrap()
@@ -141,6 +144,7 @@ impl NetworkLayer {
         initiator: bool,
         mut peer_recv: UnboundedReceiver<HandshakeProtocol>,
         mut sender: S,
+        remote_id: u32,
     ) where
         S: Sink<HandshakeProtocol> + Unpin,
         S::Error: std::fmt::Debug,
@@ -148,47 +152,45 @@ impl NetworkLayer {
         use HandshakeProtocol::*;
 
         let (mut peer, mut peer_events) = SimplePeer::new().unwrap();
-        let _dc = peer.create_data_channel("peer-connection");
+        let _dc = peer.create_data_channel("peer-connection", 0);
 
-        log_1(&"starting handshake".into());
+        debug!("starting handshake with {}", remote_id);
         // LETS DO THE WEBRTC DANCE
         if initiator {
-            log_1(&"sending offer".into());
+            debug!("sending offer remote_id={}", remote_id);
             // 1. Create an offer
             let off = peer.create_offer().await.unwrap();
             sender.send(Offer { off }).await.unwrap();
 
-            log_1(&"sent offer".into());
+            debug!("sent offer remote_id={}", remote_id);
             // 4. Handle answer
             if let Answer { ans } = peer_recv.next().await.unwrap() {
                 peer.handle_answer(ans).await.unwrap();
             }
-            log_1(&"got answer".into());
+            debug!("got answer remote_id={}", remote_id);
         } else {
-            log_1(&"waiting for offer".into());
+            debug!("waiting for offer remote_id={}", remote_id);
             // 2. Handle the offer
             if let Offer { off } = peer_recv.next().await.unwrap() {
-                log_1(&"got offer".into());
+                debug!("got offer remote_id={}", remote_id);
                 let ans = peer.handle_offer(off).await.unwrap();
                 // 3. Create an answer
                 sender.send(Answer { ans }).await.unwrap();
             }
-            log_1(&"oops".into());
         }
-
-        log_1(&peer.ice_connection_state().into());
-        log_1(&"EXCHANGING ICE CANDIDATES".into());
 
         //let mut sink = self.signal.clone();
 
+        info!("Exchanging ICE candidates remote_id={}", remote_id);
         Self::exchange_ice_candidates(&mut sender, &mut peer_events, &mut peer_recv, &mut peer).await;
-        log_1(&peer.ice_connection_state().into());
+        
+        info!("finished exchanging ICE state={:?} remote_id={}", peer.ice_connection_state(), remote_id);
 
-        let (dcs, mut rx) = DataChannelStream::new(_dc);
-        let mut recv_from_peer = self.local_chan.clone();
+        let (dcs, rx) = DataChannelStream::new(_dc);
+        let recv_from_peer = self.local_chan.clone();
 
         // Forward messages from the peer to single queue
-        spawn_local(async move { rx.map(Ok).forward(recv_from_peer).await.unwrap();});
+        spawn_local(async move { rx.map(Ok).forward(recv_from_peer).await.unwrap(); });
 
         self.peers.lock().unwrap().push((peer, dcs));
     }
@@ -216,13 +218,12 @@ impl NetworkLayer {
                     }
                 },
                 msg = peer_recv.next() => if let Some(Ice { ice }) = msg {
-                    log_1(&"RECEIVED CANDIDATE".into());
+                    debug!("received ice candidate candidate={:?}", ice);
                     Self::add_candidate(&ice, peer).await;
                 },
                 complete => break,
                 default => {
                     if peer.ice_connection_state() != web_sys::RtcIceConnectionState::New  {
-                        log_1(&"Connected?".into());
                         break
                     }
                 }
@@ -235,7 +236,7 @@ impl NetworkLayer {
         S::Error: std::fmt::Debug,
     {
         match js_sys::JSON::stringify(&ice.into()) {
-            Err(_) => {}
+            Err(_) => { warn!("couldn't serialize ICE candidate"); }
             Ok(m) => {
                 sender.send(HandshakeProtocol::Ice { ice: m.into() }).await.expect("");
             }
@@ -256,7 +257,7 @@ impl NetworkLayer {
         self.signal.clone().send(WsMessage::Text(init_msg)).await.expect("send handshake start");
     }
 
-    pub async fn broadcast(&mut self, msg: &str) -> Result<(), js_sys::Error> {
+    pub async fn broadcast(&self, msg: &str) -> Result<(), js_sys::Error> {
         for (_, tx) in self.peers.lock().unwrap().iter_mut() {
             tx.chan.send_with_str(msg)?;
         };
@@ -264,3 +265,4 @@ impl NetworkLayer {
 
     }
 }
+

@@ -214,6 +214,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_log"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e7871d2947441b0fdd8e2bd1ce2a2f75304f896582c0d572162d48290683c48"
+dependencies = [
+ "log",
+ "web-sys",
+]
+
+[[package]]
 name = "cookie"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,12 +238,14 @@ name = "crdocs"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "console_log",
  "crdts",
  "derive_more",
  "futures 0.3.1",
  "getrandom",
  "gloo-events",
  "js-sys",
+ "log",
  "quickcheck",
  "quickcheck_macros",
  "rand",

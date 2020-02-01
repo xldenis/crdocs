@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use std::collections::HashMap;
+use std::collections::*;
 
 use async_std::task;
 use futures::channel::mpsc::*;
@@ -21,7 +21,7 @@ pub struct Client {}
 type Tx = UnboundedSender<Message>;
 
 struct PeerState {
-    peers: HashMap<u32, Tx>,
+    peers: BTreeMap<u32, Tx>,
     num_peers: u32,
 }
 
@@ -59,7 +59,8 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
    
     use futures::sink::SinkExt;
 
-    outgoing.send(Message::Text(serde_json::to_string(&InitM { site_id: peer_id, initial_peer: 0 }).unwrap())).await.unwrap();
+    let min_peer = *state.lock().unwrap().peers.keys().nth(0).unwrap_or(&0);
+    outgoing.send(Message::Text(serde_json::to_string(&InitM { site_id: peer_id, initial_peer: min_peer }).unwrap())).await.unwrap();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
         println!(
@@ -77,11 +78,15 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
                         let msg = Message::Text(serde_json::to_string(
                                 &SignalMessage { id: peer_id, msg }
                         ).unwrap());
-                        peers.get_mut(&id).map(|chan| {
-                            println!("SENDING MESSAGE");
-                            chan.unbounded_send(msg).unwrap()
-                        }).unwrap();
-                    
+
+                        match peers.get_mut(&id) {
+                            Some(chan) => {
+                                chan.unbounded_send(msg).expect("send failed")
+                            }
+                            None => {
+                                println!("Tried sending message to non-existent peer {}", id);
+                            }
+                        }
                     }
                     Err(err) => {
                         println!("{:?}", err);
@@ -109,7 +114,7 @@ impl Signalling {
     pub async fn start(&mut self) -> () {
         let server = TcpListener::bind("127.0.0.1:3012").await.unwrap();
         let state = Arc::new(Mutex::new(PeerState { 
-            peers: HashMap::new(),
+            peers: BTreeMap::new(),
             num_peers: 0,
         })); 
         while let Ok((stream, addr)) = server.accept().await {

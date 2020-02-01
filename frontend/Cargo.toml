@@ -25,6 +25,8 @@ getrandom = { version = "*", features = [ "wasm-bindgen"] }
 gloo-events = "*"
 js-sys = "*"
 derive_more = "*"
+console_log = "*"
+log = "*"
 
 [dependencies.web-sys]
   version = "0.3"
@@ -39,6 +41,7 @@ derive_more = "*"
     "RtcIceConnectionState",
     "RtcIceGatheringState",
     "RtcDataChannel",
+    "RtcDataChannelInit",
   ]
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

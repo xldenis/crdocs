@@ -44,19 +44,37 @@ use crate::editor::*;
 
 #[wasm_bindgen]
 pub async fn test_network() {
+    console_log::init().unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let (id, init_pr, io) = connect_and_get_id("").await.unwrap();
 
     web_sys::console::log_2(&"peer_id=%d".into(), &id.into());
 
-    let (mut net, rx) = NetworkLayer::new(io).await;
+    let (net, mut rx) = NetworkLayer::new(io).await;
 
-    web_sys::console::log_1(&"network started".into());
+    log::info!("network started");
 
     if id != init_pr {
-        web_sys::console::log_1(&"network started".into());
         net.connect_to_peer(init_pr).await;
     }
+
+    spawn_local(async move { 
+        while let Some(msg) = rx.next().await {
+            log::warn!("got a message! {:?}", msg);
+        }
+    });
+    let mut i = Interval::new(Duration::from_millis(250));
+    
+    while let Some(_) = i.next().await {
+
+        match net.broadcast("Hello").await {
+            Ok(_) => {
+                log::info!("Saying hello to my neighbors");
+            }
+            Err(e) => { log::error!("COULD NOT BROADCAST"); }
+        }
+    }
+
 }
 
 #[wasm_bindgen]
@@ -72,7 +90,7 @@ pub async fn test_webrtc_conn(site_id: u32) {
     let (mut sink, mut stream) = wsio.split();
 
     let (mut peer, mut peer_events) = SimplePeer::new().unwrap();
-    let dc = peer.create_data_channel("peer-connection");
+    let dc = peer.create_data_channel("peer-connection", 0);
 
     // LETS DO THE WEBRTC DANCE
     if sender {

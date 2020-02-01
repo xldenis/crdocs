@@ -7,7 +7,7 @@ use web_sys::{
 };
 
 use wasm_bindgen::JsValue;
-pub use web_sys::{RtcDataChannel, RtcIceConnectionState, RtcIceGatheringState};
+pub use web_sys::{RtcDataChannel, RtcDataChannelInit, RtcIceConnectionState, RtcIceGatheringState};
 
 use std::rc::*;
 pub struct WebRtc {
@@ -104,7 +104,10 @@ impl WebRtc {
 
         Ok(())
     }
-
+    
+    pub unsafe fn get_rtc_conn(&self) -> &RtcPeerConnection {
+        &self.inner
+    }
     pub async fn add_ice_candidate(&mut self, cand: RtcIceCandidateInit) -> Result<(), Err> {
         JsFuture::from(self.inner.add_ice_candidate_with_opt_rtc_ice_candidate_init(Some(&cand))).await?;
         Ok(())
@@ -187,15 +190,17 @@ impl SimplePeer {
         self.conn.ice_gathering_state()
     }
 
-    pub fn create_data_channel(&self, name: &str) -> RtcDataChannel {
-        self.conn.create_data_channel(name)
+    pub fn create_data_channel(&self, name: &str, id: u16) -> RtcDataChannel {
+        unsafe {
+            self.conn.get_rtc_conn().create_data_channel_with_data_channel_dict(name, RtcDataChannelInit::new().id(id).negotiated(true))
+        }
     }
 }
 
 pub struct DataChannelStream {
     pub chan: RtcDataChannel,
     on_data: EventListener,
-    tx: UnboundedSender<JsValue>,
+    //tx: UnboundedSender<JsValue>,
     //rx : UnboundedReceiver<JsValue>,
 }
 
@@ -205,10 +210,11 @@ impl DataChannelStream {
         let msg_tx = tx.clone();
         let el = EventListener::new(&chan, "message", move |msg| {
             let event = msg.dyn_ref::<web_sys::MessageEvent>().unwrap();
+            log::warn!("MSG INBOUND");
             msg_tx.unbounded_send(event.data()).unwrap();
         });
 
-        (DataChannelStream { chan: chan, on_data: el, tx: tx }, rx)
+        (DataChannelStream { chan: chan, on_data: el, }, rx)
     }
 
     pub fn send(&mut self, msg: &str) -> Result<(), Err> {
