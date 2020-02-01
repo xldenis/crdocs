@@ -14,17 +14,12 @@ Platform:
   darwin x64
 
 Trace: 
-  Error: https://registry.yarnpkg.com/crdocs: Not found
-      at Request.params.callback [as _callback] (/usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:66947:18)
-      at Request.self.callback (/usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:140665:22)
-      at Request.emit (events.js:321:20)
-      at Request.<anonymous> (/usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:141637:10)
-      at Request.emit (events.js:321:20)
-      at IncomingMessage.<anonymous> (/usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:141559:12)
-      at Object.onceWrapper (events.js:427:28)
-      at IncomingMessage.emit (events.js:333:22)
-      at endReadableNT (_stream_readable.js:1220:12)
-      at processTicksAndRejections (internal/process/task_queues.js:84:21)
+  SyntaxError: /Users/xavier/Code/xldenis/crdocs/frontend/www/package.json: Unexpected token } in JSON at position 975
+      at JSON.parse (<anonymous>)
+      at /usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:1625:59
+      at Generator.next (<anonymous>)
+      at step (/usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:310:30)
+      at /usr/local/Cellar/yarn/1.21.1/libexec/lib/cli.js:321:13
 
 npm manifest: 
   {
@@ -57,12 +52,14 @@ npm manifest:
     "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
     "devDependencies": {
       "copy-webpack-plugin": "^5.0.0",
-      "crdocs": "*",
       "webpack": "^4.29.3",
       "webpack-cli": "^3.1.0",
       "webpack-dev-server": "^3.1.5"
     },
-    "dependencies": {}
+    "dependencies": {
+      "diff": "^4.0.2",
+      "crdocs": "file:../pkg",
+   }
   }
 
 yarn manifest: 
@@ -896,6 +893,9 @@ Lockfile:
     resolved "https://registry.yarnpkg.com/core-util-is/-/core-util-is-1.0.2.tgz#b5fd54220aa2bc5ab57aab7140c940754503c1a7"
     integrity sha1-tf1UIgqivFq1eqtxQMlAdUUDwac=
   
+  "crdocs@file:../pkg":
+    version "0.1.0"
+  
   create-ecdh@^4.0.0:
     version "4.0.3"
     resolved "https://registry.yarnpkg.com/create-ecdh/-/create-ecdh-4.0.3.tgz#c9111b6f33045c4697f144787f9254cdc77c45ff"
@@ -1080,6 +1080,11 @@ Lockfile:
     version "2.0.4"
     resolved "https://registry.yarnpkg.com/detect-node/-/detect-node-2.0.4.tgz#014ee8f8f669c5c58023da64b8179c083a28c46c"
     integrity sha512-ZIzRpLJrOj7jjP2miAtgqIfmzbxa4ZOr5jJc601zklsfEx9oTzmmj2nVpIPRpNlRTIh8lc1kyViIY7BWSGNmKw==
+  
+  diff@^4.0.2:
+    version "4.0.2"
+    resolved "https://registry.yarnpkg.com/diff/-/diff-4.0.2.tgz#60f3aecb89d5fae520c11aa19efc2bb982aade7d"
+    integrity sha512-58lmxKSA4BNyLz+HHMUzlOEpg09FV+ev6ZMe3vJihgdxzgcwZ8VoEEPmALCZG9LmqfVoNMMKpttIYTVG6uDY7A==
   
   diffie-hellman@^5.0.0:
     version "5.0.3"
@@ -1711,11 +1716,6 @@ Lockfile:
     dependencies:
       inherits "^2.0.3"
       minimalistic-assert "^1.0.1"
-  
-  hello-wasm-pack@^0.1.0:
-    version "0.1.0"
-    resolved "https://registry.yarnpkg.com/hello-wasm-pack/-/hello-wasm-pack-0.1.0.tgz#482a2e3371828056ac35f5b5fec76c0b99dcd530"
-    integrity sha512-3hx0GDkDLf/a9ThCMV2qG4mwza8N/MCtm8aeFFc/cdBCL2zMJ1kW1wjNl7xPqD1lz8Yl5+uhnc/cpui4dLwz/w==
   
   hmac-drbg@^1.0.0:
     version "1.0.1"

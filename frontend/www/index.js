@@ -17,5 +17,6 @@ editor.oninput = function (e) {
   prev_value = ed.value;
 }
 
-wasm.test_webrtc_conn(p.get('id'));
+wasm.test_network();
+//wasm.test_webrtc_conn(p.get('id'));
 
