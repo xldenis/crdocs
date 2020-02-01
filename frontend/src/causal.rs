@@ -126,7 +126,7 @@ mod test {
         Insert(u32),
         Delete(u32),
     }
-    
+
     use Op::*;
 
     impl CausalOp for Op {
@@ -135,7 +135,7 @@ mod test {
         fn happens_before(&self) -> bool {
             match self {
                 Op::Insert(_) => false,
-                Op::Delete(i) => true, 
+                Op::Delete(i) => true,
             }
         }
 

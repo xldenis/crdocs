@@ -1,8 +1,8 @@
-mod utils;
-pub mod lseq;
 pub mod causal;
-pub mod webrtc;
 pub mod editor;
+pub mod lseq;
+mod utils;
+pub mod webrtc;
 
 #[cfg(test)]
 extern crate quickcheck;
@@ -40,6 +40,22 @@ macro_rules! enclose {
 }
 use std::panic;
 // use serde::{Deserialize, Serialize};
+use crate::editor::*;
+
+#[wasm_bindgen]
+pub async fn test_network() {
+    let (id, init_pr, io) = connect_and_get_id("").await.unwrap();
+
+    web_sys::console::log_2(&"peer_id=%d".into(), &id.into());
+
+    let mut net = NetworkLayer::new(io).await;
+
+    web_sys::console::log_1(&"network started".into());
+    if id != init_pr {
+        web_sys::console::log_1(&"network started".into());
+        net.connect_to_peer(init_pr).await;
+    }
+}
 
 #[wasm_bindgen]
 pub async fn test_webrtc_conn(site_id: u32) {
