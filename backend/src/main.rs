@@ -13,7 +13,7 @@ fn main() {
 
     let x = async {
         println!("Starting static file server");
-        app.listen("localhost:8080").await
+        app.listen("localhost:5000").await
     };
 
     let s = async {

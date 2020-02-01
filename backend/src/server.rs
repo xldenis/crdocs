@@ -18,12 +18,23 @@ pub struct Signalling {
 #[derive(Clone)]
 pub struct Client {}
 
-
 type Tx = UnboundedSender<Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
+
+struct PeerState {
+    peers: HashMap<u32, Tx>,
+    num_peers: u32,
+}
+
+type PeerMap = Arc<Mutex<PeerState>>;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Debug, Deserialize, Serialize)]
+struct SignalMessage { id: u32, msg: Value }
 
 // Simple broadcaster taken from async-tungstenite
-async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
+async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
     println!("Incoming TCP connection from: {}", addr);
 
     let ws_stream = async_tungstenite::accept_async(raw_stream)
@@ -33,9 +44,22 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
 
     // Insert the write part of this peer to the peer map.
     let (tx, rx) = unbounded();
-    peer_map.lock().unwrap().insert(addr, tx);
+    let peer_id = {
+        let mut peers = state.lock().unwrap();
+        let peer_id = peers.num_peers;
+        peers.peers.insert(peer_id, tx);
+        peers.num_peers += 1;
+        peer_id
+    };
 
-    let (outgoing, incoming) = ws_stream.split();
+    let (mut outgoing, incoming) = ws_stream.split();
+
+    #[derive(Serialize)]
+    struct InitM { site_id: u32, initial_peer: u32 };
+   
+    use futures::sink::SinkExt;
+
+    outgoing.send(Message::Text(serde_json::to_string(&InitM { site_id: peer_id, initial_peer: 0 }).unwrap())).await.unwrap();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
         println!(
@@ -43,34 +67,51 @@ async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: Socke
             addr,
             msg.to_text().unwrap()
         );
-        let peers = peer_map.lock().unwrap();
 
-        // We want to broadcast the message to everyone except ourselves.
-        let broadcast_recipients = peers
-            .iter()
-            .filter(|(peer_addr, _)| peer_addr != &&addr)
-            .map(|(_, ws_sink)| ws_sink);
-
-        for recp in broadcast_recipients {
-            recp.unbounded_send(msg.clone()).unwrap();
+        let peers = &mut state.lock().unwrap().peers;
+        
+        match msg.clone() {
+            Message::Text(txt) => {
+                match serde_json::from_str(&txt) {
+                    Ok(SignalMessage { id, msg }) => {
+                        let msg = Message::Text(serde_json::to_string(
+                                &SignalMessage { id: peer_id, msg }
+                        ).unwrap());
+                        peers.get_mut(&id).map(|chan| {
+                            println!("SENDING MESSAGE");
+                            chan.unbounded_send(msg).unwrap()
+                        }).unwrap();
+                    
+                    }
+                    Err(err) => {
+                        println!("{:?}", err);
+                    }
+                }
+            }
+            _ => { 
+                println!("Unsupported binary message!");
+            }
         }
 
         future::ok(())
     });
 
-    let receive_from_others = rx.map(Ok).forward(outgoing);
+    let receive_from_others = rx.map(|msg| {println!("sending {}", peer_id); msg}).map(Ok).forward(outgoing);
 
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
 
     println!("{} disconnected", &addr);
-    peer_map.lock().unwrap().remove(&addr);
+    state.lock().unwrap().peers.remove(&peer_id);
 }
 // Incredibly basic signalling server that just broadcasts every message to everyone
 impl Signalling {
     pub async fn start(&mut self) -> () {
         let server = TcpListener::bind("127.0.0.1:3012").await.unwrap();
-        let state = Arc::new(Mutex::new(HashMap::new())); 
+        let state = Arc::new(Mutex::new(PeerState { 
+            peers: HashMap::new(),
+            num_peers: 0,
+        })); 
         while let Ok((stream, addr)) = server.accept().await {
             task::spawn(handle_connection(state.clone(), stream, addr));
         }
