@@ -43,8 +43,7 @@ jobs:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
     - name: Install wasm-pack
-      run: |
-         curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      run: cargo install wasm-pack --version 0.8.1
     - name: Cache wasm-pack build
       uses: actions/cache@v1
       with:
