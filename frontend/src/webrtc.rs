@@ -259,8 +259,8 @@ mod test {
 
     #[wasm_bindgen_test]
     async fn test_simple_peer() {
-        let mut rtc1 = SimplePeer::new().expect("create simplepeer");
-        let mut rtc2 = SimplePeer::new().expect("create simplepeer");
+        let (mut rtc1, _) = SimplePeer::new().expect("create simplepeer");
+        let (mut rtc2, _) = SimplePeer::new().expect("create simplepeer");
 
         let off = rtc1.create_offer().await.expect("create offer");
         let ans = rtc2.handle_offer(off).await.expect("handle offer");
