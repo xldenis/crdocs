@@ -25,7 +25,7 @@ impl IdentGen {
     }
 
     pub fn new_with_args(base: u32, site_id: u32) -> IdentGen {
-        IdentGen { initial_base_bits: base, site_id: site_id }
+        IdentGen { initial_base_bits: base, site_id }
     }
 
     pub fn lower(&self) -> Identifier {
@@ -127,13 +127,13 @@ impl IdentGen {
         let mut ident = p.clone();
         ident.path.truncate(depth);
         ident.path.push((ix, self.site_id));
-        return ident;
+        ident
     }
 
     fn push_index(&mut self, p: &Identifier, ix: u64) -> Identifier {
         let mut ident = p.clone();
         ident.path.push((ix, self.site_id));
-        return ident;
+        ident
     }
 
     fn width_at(&self, depth: usize) -> u64 {

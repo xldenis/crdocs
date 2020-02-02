@@ -69,7 +69,7 @@ impl LSeq {
         let ident = self.text[ix].0.clone();
         self.do_delete(ident.clone());
 
-        Op::Delete(ident.clone())
+        Op::Delete(ident)
     }
 
     pub fn text(&self) -> String {
@@ -84,7 +84,7 @@ mod test {
     use rand::Rng;
 
     #[test]
-    fn test_out_of_order_inserts () {
+    fn test_out_of_order_inserts() {
         let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 0) };
         //let mut site2 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 1) };
         site1.local_insert(0, 'a');

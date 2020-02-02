@@ -6,8 +6,8 @@
 //
 
 use derive_more::{Add, From};
-use std::collections::*;
 use serde::{Deserialize, Serialize};
+use std::collections::*;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From, Deserialize, Serialize)]
 pub struct SiteId(pub u32);
@@ -83,7 +83,7 @@ impl<T: CausalOp> CausalityBarrier<T> {
         CausalityBarrier { local_id: site_id, local_clock: 0.into(), peers: HashMap::new(), buffer: HashMap::new() }
     }
     pub fn ingest(&mut self, msg: CausalMessage<T>) -> Option<T> {
-        let v = self.peers.entry(msg.local_id).or_insert_with(|| VectorEntry::new());
+        let v = self.peers.entry(msg.local_id).or_insert_with(VectorEntry::new);
 
         v.increment(msg.time);
 
@@ -114,7 +114,7 @@ impl<T: CausalOp> CausalityBarrier<T> {
         let t = self.local_clock;
         self.local_clock = LogTime(t.0 + 1);
 
-        CausalMessage { time: t, local_id: self.local_id, msg: msg }
+        CausalMessage { time: t, local_id: self.local_id, msg }
     }
 }
 

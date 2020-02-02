@@ -1,17 +1,10 @@
 pub mod causal;
 pub mod editor;
 pub mod lseq;
-mod utils;
+pub mod network;
 pub mod webrtc;
 
-#[cfg(test)]
-extern crate quickcheck;
-#[cfg(test)]
-#[macro_use(quickcheck)]
-extern crate quickcheck_macros;
-
 use wasm_bindgen::prelude::*;
-
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -22,6 +15,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 use std::panic;
 // use serde::{Deserialize, Serialize};
 use crate::editor::*;
+use crate::network::*;
 
 #[wasm_bindgen]
 pub async fn test_network() -> Editor {

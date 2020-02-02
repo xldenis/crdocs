@@ -104,7 +104,7 @@ impl WebRtc {
 
         Ok(())
     }
-    
+
     pub unsafe fn get_rtc_conn(&self) -> &RtcPeerConnection {
         &self.inner
     }
@@ -143,13 +143,12 @@ impl SimplePeer {
         let mut rtc_conn = WebRtc::new()?;
         let (tx, rx) = mpsc::unbounded();
 
-        let peer = tx.clone();
         rtc_conn.register_on_ice(move |ice_candidate: &RtcPeerConnectionIceEvent| {
             match ice_candidate.candidate() {
                 Some(c) => {
-                    peer.unbounded_send(c).expect("send ice candidate");
+                    tx.unbounded_send(c).expect("send ice candidate");
                 }
-                None => peer.close_channel(),
+                None => tx.close_channel(),
             };
         });
 
@@ -192,7 +191,9 @@ impl SimplePeer {
 
     pub fn create_data_channel(&self, name: &str, id: u16) -> RtcDataChannel {
         unsafe {
-            self.conn.get_rtc_conn().create_data_channel_with_data_channel_dict(name, RtcDataChannelInit::new().id(id).negotiated(true))
+            self.conn
+                .get_rtc_conn()
+                .create_data_channel_with_data_channel_dict(name, RtcDataChannelInit::new().id(id).negotiated(true))
         }
     }
 }
@@ -207,13 +208,13 @@ pub struct DataChannelStream {
 impl DataChannelStream {
     pub fn new(chan: RtcDataChannel) -> (Self, UnboundedReceiver<JsValue>) {
         let (tx, rx) = unbounded();
-        let msg_tx = tx.clone();
+
         let el = EventListener::new(&chan, "message", move |msg| {
             let event = msg.dyn_ref::<web_sys::MessageEvent>().unwrap();
-            msg_tx.unbounded_send(event.data()).expect("send msg");
+            tx.unbounded_send(event.data()).expect("send msg");
         });
 
-        (DataChannelStream { chan: chan, on_data: el, }, rx)
+        (DataChannelStream { chan, on_data: el }, rx)
     }
 
     pub fn send(&mut self, msg: &str) -> Result<(), Err> {
