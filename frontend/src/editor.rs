@@ -24,11 +24,10 @@ impl Editor {
         spawn_local(async move {
             while let Some(msg) = rx.next().await {
                 let op = serde_json::from_str(&msg.as_string().unwrap()).unwrap();
-                info!("msg {:?}", op);
                 local_store.lock().unwrap().apply(op);
                 match &*local_change.borrow() {
                    Some(x) => {
-                       x.call1(&JsValue::NULL, &local_store.lock().unwrap().text().into());
+                       x.call1(&JsValue::NULL, &local_store.lock().unwrap().text().into()).unwrap();
                    }
                    None => {}
                 }
@@ -121,7 +120,7 @@ struct Sig {
     msg: HandshakeProtocol,
 }
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::rc::Rc;
 
 pub struct NetworkLayer {

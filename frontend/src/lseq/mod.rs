@@ -49,9 +49,12 @@ impl LSeq {
             let prev = self.text.last().map(|(i, _)| i).unwrap_or_else(|| &lower);
             self.gen.alloc(prev, &upper)
         } else {
-            let prev = self.text.get(ix).map(|(i, _)| i).unwrap();
-            let next = self.text.get(ix + 1).map(|(i, _)| i).unwrap_or(&upper);
-            let a = self.gen.alloc(prev, next);
+            let prev = match ix.checked_sub(1) {
+                Some(i) => &self.text.get(i).unwrap().0,
+                None => &lower,
+            };
+            let next = self.text.get(ix).map(|(i, _)| i).unwrap_or(&upper);
+            let a = self.gen.alloc(&prev, next);
 
             assert!(prev < &a);
             assert!(&a < next);
@@ -80,6 +83,16 @@ mod test {
     use rand::distributions::Alphanumeric;
     use rand::Rng;
 
+    #[test]
+    fn test_out_of_order_inserts () {
+        let mut site1 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 0) };
+        //let mut site2 = LSeq { text: Vec::new(), gen: IdentGen::new_with_args(INITIAL_BASE, 1) };
+        site1.local_insert(0, 'a');
+        site1.local_insert(1, 'c');
+        site1.local_insert(1, 'b');
+
+        assert_eq!(site1.text(), "abc");
+    }
     #[test]
     fn test_inserts() {
         // A simple smoke test to ensure that insertions work properly.

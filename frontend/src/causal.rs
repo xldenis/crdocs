@@ -135,7 +135,7 @@ mod test {
         fn happens_before(&self) -> bool {
             match self {
                 Op::Insert(_) => false,
-                Op::Delete(i) => true,
+                Op::Delete(_i) => true,
             }
         }
 

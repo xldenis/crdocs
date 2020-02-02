@@ -1,5 +1,7 @@
-[workspace]
+  [workspace]
 members = [
   "backend",
   "frontend",
 ]
+[profile.release]
+#opt-level = "s"
