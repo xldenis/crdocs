@@ -37,9 +37,14 @@ struct SignalMessage { id: u32, msg: Value }
 async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
     println!("Incoming TCP connection from: {}", addr);
 
-    let ws_stream = async_tungstenite::accept_async(raw_stream)
-        .await
-        .expect("Error during the websocket handshake occurred");
+    let ws_stream = match async_tungstenite::accept_async(raw_stream).await {
+        Err(e) => {
+            println!("Error during the websocket handshake occurred {:?}", e);
+            return;
+        }
+        Ok(e) => e
+    };
+
     println!("WebSocket connection established: {}", addr);
 
     // Insert the write part of this peer to the peer map.
@@ -56,7 +61,7 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
 
     #[derive(Serialize)]
     struct InitM { site_id: u32, initial_peer: u32 };
-   
+
     use futures::sink::SinkExt;
 
     let min_peer = *state.lock().unwrap().peers.keys().nth(0).unwrap_or(&0);
@@ -70,7 +75,7 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
         );
 
         let peers = &mut state.lock().unwrap().peers;
-        
+
         match msg.clone() {
             Message::Text(txt) => {
                 match serde_json::from_str(&txt) {
@@ -93,7 +98,7 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
                     }
                 }
             }
-            _ => { 
+            _ => {
                 println!("Unsupported binary message!");
             }
         }
@@ -113,10 +118,10 @@ async fn handle_connection(state: PeerMap, raw_stream: TcpStream, addr: SocketAd
 impl Signalling {
     pub async fn start(&mut self) -> () {
         let server = TcpListener::bind("127.0.0.1:3012").await.unwrap();
-        let state = Arc::new(Mutex::new(PeerState { 
+        let state = Arc::new(Mutex::new(PeerState {
             peers: BTreeMap::new(),
             num_peers: 0,
-        })); 
+        }));
         while let Ok((stream, addr)) = server.accept().await {
             task::spawn(handle_connection(state.clone(), stream, addr));
         }

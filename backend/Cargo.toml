@@ -11,7 +11,7 @@ edition = "2018"
 # tungstenite = "*"
 async-std = "*"
 futures = "^0.3"
-async-tungstenite = "*"
+async-tungstenite = "0.3.1"
 tide = { version = "^0.6" }
 tide-static-files = { git = "https://github.com/xldenis/tide-static-files" }
 serde_json = "*"
