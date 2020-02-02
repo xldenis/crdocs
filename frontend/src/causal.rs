@@ -7,11 +7,12 @@
 
 use derive_more::{Add, From};
 use std::collections::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From)]
-pub struct SiteId(u32);
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From, Deserialize, Serialize)]
+pub struct SiteId(pub u32);
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone, PartialOrd, Ord, Hash, Add, From)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, PartialOrd, Ord, Hash, Add, From, Deserialize, Serialize)]
 pub struct LogTime(u32);
 
 /// Replace with the real identifier
@@ -30,7 +31,7 @@ pub struct VectorEntry {
     exceptions: HashSet<LogTime>,
 }
 
-#[derive(PartialEq, Debug, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Debug, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct CausalMessage<T> {
     time: LogTime,
     local_id: SiteId,

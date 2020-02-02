@@ -5,7 +5,7 @@ const BOUNDARY: u64 = 10;
 
 pub const INITIAL_BASE: u32 = 3; // start with 2^8
 
-#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, PartialOrd, Ord, Eq, Clone, Serialize, Deserialize, Hash)]
 pub struct Identifier {
     path: Vec<(u64, u32)>,
     // site_id: u64,
