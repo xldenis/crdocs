@@ -147,7 +147,7 @@ impl SimplePeer {
         rtc_conn.register_on_ice(move |ice_candidate: &RtcPeerConnectionIceEvent| {
             match ice_candidate.candidate() {
                 Some(c) => {
-                    peer.unbounded_send(c).unwrap();
+                    peer.unbounded_send(c).expect("send ice candidate");
                 }
                 None => peer.close_channel(),
             };
@@ -210,8 +210,7 @@ impl DataChannelStream {
         let msg_tx = tx.clone();
         let el = EventListener::new(&chan, "message", move |msg| {
             let event = msg.dyn_ref::<web_sys::MessageEvent>().unwrap();
-            log::warn!("MSG INBOUND");
-            msg_tx.unbounded_send(event.data()).unwrap();
+            msg_tx.unbounded_send(event.data()).expect("send msg");
         });
 
         (DataChannelStream { chan: chan, on_data: el, }, rx)
