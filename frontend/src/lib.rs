@@ -6,6 +6,13 @@ pub mod webrtc;
 
 use wasm_bindgen::prelude::*;
 
+#[cfg(test)]
+extern crate quickcheck;
+
+#[cfg(test)]
+#[macro_use(quickcheck)]
+extern crate quickcheck_macros;
+
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
 #[cfg(feature = "wee_alloc")]
@@ -19,7 +26,7 @@ use crate::network::*;
 
 #[wasm_bindgen]
 pub async fn test_network() -> Editor {
-    console_log::init().unwrap();
+    console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let (id, init_pr, io) = connect_and_get_id("").await.unwrap();
 

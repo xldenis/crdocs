@@ -146,7 +146,9 @@ impl SimplePeer {
         rtc_conn.register_on_ice(move |ice_candidate: &RtcPeerConnectionIceEvent| {
             match ice_candidate.candidate() {
                 Some(c) => {
-                    tx.unbounded_send(c).expect("send ice candidate");
+                    if let Err(e) = tx.unbounded_send(c) {
+                        log::warn!("could not relay ice candidate {:?}", e);
+                    }
                 }
                 None => tx.close_channel(),
             };

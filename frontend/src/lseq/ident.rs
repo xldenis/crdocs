@@ -15,7 +15,7 @@ pub struct Identifier {
 #[derive(Serialize, Deserialize)]
 pub struct IdentGen {
     initial_base_bits: u32,
-    site_id: u32,
+    pub site_id: u32,
     // clock: u64
 }
 

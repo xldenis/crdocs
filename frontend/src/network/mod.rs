@@ -55,7 +55,7 @@ struct Sig {
 }
 
 pub struct NetworkLayer {
-    peers: RefCell<Vec<(SimplePeer, DataChannelStream)>>,
+    peers: RefCell<HashMap<u32, (SimplePeer, DataChannelStream)>>,
     signal: UnboundedSender<WsMessage>,
     local_chan: UnboundedSender<JsValue>,
 }
@@ -65,7 +65,7 @@ impl NetworkLayer {
         let (out, inp) = signalling_channel.split();
         let (to_sig, from_sig) = unbounded();
 
-        let peers = RefCell::new(Vec::new());
+        let peers = RefCell::new(HashMap::new());
         let (to_local, from_net) = unbounded();
 
         let net = Rc::new(NetworkLayer { peers, signal: to_sig, local_chan: to_local });
@@ -110,7 +110,6 @@ impl NetworkLayer {
                         sender: peer_sink,
                         remote_id: id,
                         peer_recv: rx,
-                        local_chan: self.local_chan.clone(),
                     };
 
                     // Spawn an async closure that will handle the handshake with this peer
@@ -131,14 +130,15 @@ impl NetworkLayer {
                                 sender: peer_sink,
                                 remote_id: id,
                                 peer_recv: rx,
-                                local_chan: self.local_chan.clone(),
                             };
 
                             spawn_local(Self::handle_new_peer(self.clone(), handshake));
                             tx.clone()
                         });
 
-                    chan.send(msg).await.expect("1");
+                    if let Err(_) = chan.send(msg.clone()).await {
+                        error!("Could not send {:?} to {:?}", msg, id);
+                    };
                 }
             }
         }
@@ -154,8 +154,19 @@ impl NetworkLayer {
         S::Error: std::fmt::Debug,
     {
         match handshake.handle_new_peer().await {
-            Ok((peer, dcs)) => {
-                self.peers.borrow_mut().push((peer, dcs));
+            Ok((peer, dc)) => {
+                let (dcs, rx) = DataChannelStream::new(dc);
+                let recv_from_peer = self.local_chan.clone();
+                self.peers.borrow_mut().insert(handshake.remote_id, (peer, dcs));
+
+                // Forward messages from the peer to single queue
+                let this = self.clone();
+                let id = handshake.remote_id;
+                spawn_local(async move {
+                    let _ = rx.map(Ok).forward(recv_from_peer).await;
+                    this.peers.borrow_mut().remove(&id);
+                });
+
             }
             Err(err) => error!("Couldn't establish peer connection {:?}", err),
         }
@@ -172,9 +183,13 @@ impl NetworkLayer {
 
     // Send a packet out to the network
     pub async fn broadcast(&self, msg: &str) -> Result<(), js_sys::Error> {
-        for (_, tx) in self.peers.borrow_mut().iter_mut() {
+        for (_, (_, tx)) in self.peers.borrow_mut().iter_mut() {
             tx.chan.send_with_str(msg)?;
         }
         Ok(())
+    }
+
+    pub fn num_connected_peers(&self) -> usize {
+        self.peers.borrow().len()
     }
 }

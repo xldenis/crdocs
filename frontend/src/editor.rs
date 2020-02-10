@@ -28,22 +28,40 @@ pub struct Editor {
     pub site_id: u32,
 }
 
-impl CausalOp for Op {
-    type Id = Identifier;
+use serde::*;
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+enum EditorOp {
+    AntiEntropyResp { vec: Vec<Op> },
+    AntiEntropyReq { vec: std::collections::HashMap<SiteId, VectorEntry> },
+    Op {
+        #[serde(flatten)]
+        op: CausalMessage<Op>
+    },
+}
+
+impl CausalOp for Op {
     fn happens_before(&self) -> bool {
         match self {
-            Op::Insert(_, _) => false,
-            Op::Delete(_) => true,
+            Op::Insert{..} => false,
+            Op::Delete{..} => true,
         }
     }
 
-    fn id(&self) -> Self::Id {
+    fn site(&self) -> SiteId {
         match self {
-            Op::Insert(ix, _) => ix,
-            Op::Delete(ix) => ix,
+            Op::Insert{site_id, ..} => SiteId::from(*site_id),
+            Op::Delete{site_id, ..} => SiteId::from(*site_id),
         }
         .clone()
+    }
+
+    fn clock(&self) -> LogTime {
+        match self {
+            Op::Insert{clock, ..} => LogTime::from(*clock),
+            Op::Delete{clock, ..} => LogTime::from(*clock),
+        }
     }
 }
 
@@ -59,19 +77,50 @@ impl Editor {
         let onchange: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
         let local_change = onchange.clone();
 
-        let barrier = shared(CausalityBarrier::new(SiteId(id)));
+        let barrier : Shared<CausalityBarrier<Op>> = shared(CausalityBarrier::new(SiteId(id)));
         let local_barrier = barrier.clone();
+        let local_net = net.clone();
 
         spawn_local(async move {
             while let Some(msg) = rx.next().await {
                 let op = serde_json::from_str(&msg.as_string().unwrap()).unwrap();
                 let mut lseq = local_store.lock().unwrap();
+                use EditorOp::*;
 
-                if let Some(op) = local_barrier.borrow_mut().ingest(op) {
-                    lseq.apply(op);
+                match op {
+                    AntiEntropyReq { vec } => {
+                        // Here are all the operations that we've seen and need to find.
+                        let to_find = local_barrier.borrow().diff_from(&vec);
+                        let mut resp = Vec::new();
+                        // 1. Search the local LSeq.
+                        for e in lseq.raw_text() {
+                            if let Some(set) = to_find.get(&e.2.into()) {
+                                if set.contains(&LogTime::from(e.1)) {
+                                    resp.push(crate::lseq::Op::Insert { id: e.0.clone(), clock: e.1, site_id: e.2, c: e.3 });
+                                }
+                            }
+                        }
+
+                        // 2. Search the causal buffer for unapplied removes
+                        for (_causal_id, del) in local_barrier.borrow().buffer.iter() {
+                            resp.push(del.clone());
+                        }
+
+                        local_net.broadcast(&serde_json::to_string(&AntiEntropyResp { vec: resp }).unwrap()).await.unwrap();
+
+                    }
+                    AntiEntropyResp {vec} => {
+                        log::info!("{:?}", vec);
+                    }
+                    Op { op } => {
+                        if let Some(op) = local_barrier.borrow_mut().ingest(op) {
+                            lseq.apply(&op);
+                        }
+
+                        Self::notify_js(local_change.clone(), &lseq.text());
+                    }
                 }
 
-                Self::notify_js(local_change.clone(), &lseq.text());
             }
         });
 
@@ -115,3 +164,4 @@ impl Editor {
         self.onchange.replace(Some(f.clone()));
     }
 }
+

@@ -7,7 +7,6 @@ pub struct State<S> {
     pub sender: S,
     pub remote_id: u32,
     pub peer_recv: UnboundedReceiver<super::HandshakeProtocol>,
-    pub local_chan: UnboundedSender<JsValue>,
 }
 
 impl<S> State<S>
@@ -15,11 +14,11 @@ where
     S: Sink<super::HandshakeProtocol> + Unpin,
     S::Error: std::fmt::Debug,
 {
-    pub async fn handle_new_peer(&mut self) -> Result<(SimplePeer, DataChannelStream), js_sys::Error> {
+    pub async fn handle_new_peer(&mut self) -> Result<(SimplePeer, RtcDataChannel), js_sys::Error> {
         use HandshakeProtocol::*;
 
         let (mut peer, peer_events) = SimplePeer::new()?;
-        let _dc = peer.create_data_channel("peer-connection", 0);
+        let dc = peer.create_data_channel("peer-connection", 0);
 
         debug!("starting handshake with {}", self.remote_id);
         // LETS DO THE WEBRTC DANCE
@@ -53,16 +52,8 @@ where
 
         info!("finished exchanging ICE state={:?} remote_id={}", peer.ice_connection_state(), self.remote_id);
 
-        let (dcs, rx) = DataChannelStream::new(_dc);
-        let recv_from_peer = self.local_chan.clone();
-
-        // Forward messages from the peer to single queue
-        spawn_local(async move {
-            rx.map(Ok).forward(recv_from_peer).await.expect("forward");
-        });
-
         // self.peers.borrow_mut().push((peer, dcs));
-        Ok((peer, dcs))
+        Ok((peer, dc))
     }
 
     async fn exchange_ice_candidates(
@@ -80,11 +71,12 @@ where
             futures::select! {
                 msg = peer_events.next() => {
                     if let Some(c) = msg {
+                        warn!("sending ice candidate remote_id={:?}", self.remote_id);
                         Self::send_candidate(&mut self.sender, c).await
                     }
                 },
                 msg = self.peer_recv.next() => if let Some(Ice { ice }) = msg {
-                    debug!("received ice candidate candidate={:?}", ice);
+                    warn!("received ice candidate candidate={:?}", ice);
                     Self::add_candidate(&ice, peer).await;
                 },
                 complete => break,
