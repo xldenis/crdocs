@@ -6,8 +6,8 @@
 //
 
 use derive_more::{Add, From, Into};
-use serde::{Deserialize, Deserializer, self, Serialize};
 use std::collections::*;
+use serde::{Deserialize, Deserializer, self, Serialize};
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From, Deserialize, Serialize)]
 pub struct SiteId(
@@ -27,9 +27,9 @@ fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 #[derive(PartialEq, Eq, Debug, Copy, Clone, PartialOrd, Ord, Hash, Add, From, Into, Deserialize, Serialize)]
 pub struct LogTime(u64);
 
-/// Replace with the real identifier
-pub struct TempId(u32);
+
 /// Version Vector with Exceptions
+#[derive(Debug)]
 pub struct CausalityBarrier<T: CausalOp> {
     peers: HashMap<SiteId, VectorEntry>,
     // Do we really need a map or just a set?
@@ -42,13 +42,6 @@ pub struct VectorEntry {
     // The version of the next message we'd like to see
     max_version: LogTime,
     exceptions: HashSet<LogTime>,
-}
-
-#[derive(PartialEq, Debug, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize)]
-pub struct CausalMessage<T> {
-    time: LogTime,
-    local_id: SiteId,
-    msg: T,
 }
 
 use std::hash::Hash;
@@ -73,8 +66,8 @@ impl VectorEntry {
         }
     }
 
-    pub fn is_ready(&self, clk: LogTime) -> bool {
-        clk < self.max_version && !self.exceptions.contains(&clk)
+    pub fn is_ready(&self, clk: &LogTime) -> bool {
+        *clk < self.max_version && !self.exceptions.contains(clk)
     }
 
     /// Calculate the difference between a remote VectorEntry and ours.
@@ -93,12 +86,14 @@ impl VectorEntry {
 }
 
 pub trait CausalOp {
+    // type Id : Eq + Hash;
     /// Tells us the id we causally depend on
     /// Remove(X) depends on X
     /// Insert(Y) depends on nothing.
-    fn happens_before(&self) -> bool;
+    fn happens_before(&self) -> Option<(SiteId, LogTime)>;
     fn site(&self) -> SiteId;
     fn clock(&self) -> LogTime;
+    // fn id(&self) -> Self::Id;
 }
 
 impl<T: CausalOp> CausalityBarrier<T> {
@@ -108,6 +103,10 @@ impl<T: CausalOp> CausalityBarrier<T> {
 
     pub fn ingest(&mut self, msg: T) -> Option<T> {
         let v = self.peers.entry(msg.site()).or_insert_with(VectorEntry::new);
+        // Have we already seen this message?
+        if v.is_ready(&msg.clock()) {
+            return None
+        }
 
         v.increment(msg.clock());
 
@@ -117,13 +116,17 @@ impl<T: CausalOp> CausalityBarrier<T> {
         // corresponding insert happened before!
         match msg.happens_before() {
             // Dang! we have a happens before relation!
-            true => {
+            Some(op) => {
                 // Let's buffer this operation then.
-                self.buffer.insert((msg.site(), msg.clock()), msg);
+                if ! self.saw_site_do(&op.0, &op.1) {
+                    self.buffer.insert(op, msg);
                 // and do nothing
-                None
+                    None
+                } else {
+                    Some(msg)
+                }
             }
-            false => {
+            None => {
                 // Ok so we're not causally constrained, but maybe we already saw an associated
                 // causal operation? If so let's just delete the pair
                 match self.buffer.remove(&(msg.site(), msg.clock())) {
@@ -134,10 +137,16 @@ impl<T: CausalOp> CausalityBarrier<T> {
         }
     }
 
+    pub fn saw_site_do(&self, site: &SiteId, t: &LogTime) -> bool {
+        match self.peers.get(&site) {
+            Some(ent) => ent.is_ready(t),
+            None => { false }
+        }
+    }
+
     pub fn expel(&mut self, msg: T) -> T {
         let v = self.peers.entry(msg.site()).or_insert_with(VectorEntry::new);
         v.increment(msg.clock());
-        log::info!("{:?} {:?}", msg.clock(), v);
         msg
     }
 
@@ -150,7 +159,7 @@ impl<T: CausalOp> CausalityBarrier<T> {
             };
             ret.insert(*site_id, e_diff);
         }
-        ret 
+        ret
     }
 
     pub fn vvwe(&self) -> HashMap<SiteId, VectorEntry> {
@@ -163,30 +172,43 @@ impl<T: CausalOp> CausalityBarrier<T> {
 mod test {
     use super::*;
 
-    #[derive(PartialEq, Debug)]
+    #[derive(PartialEq, Debug, Hash, Clone)]
     enum Op {
         Insert(u64),
-        Delete(u64),
+        Delete(SiteId, LogTime),
     }
 
     use Op::*;
 
-    impl CausalOp for Op {
-        fn happens_before(&self) -> bool {
-            match self {
-                Op::Insert(_) => false,
-                Op::Delete(_i) => true,
+    #[derive(PartialEq, Debug, Hash, Clone)]
+    pub struct CausalMessage {
+        time: LogTime,
+        local_id: SiteId,
+        msg: Op,
+    }
+
+    impl CausalOp for CausalMessage {
+        // type Id = u64;
+
+        fn happens_before(&self) -> Option<(SiteId, LogTime)> {
+            match self.msg {
+                Op::Insert(_) => None,
+                Op::Delete(s, l) => Some((s, l)),
             }
         }
 
+        // fn id(&self) -> Self::Id {
+        //     match self.msg {
+        //         Op::Insert(u) => u.clone(),
+        //         Op::Delete(u) => u.clone(),
+        //     }
+        // }
         fn clock(&self) -> LogTime {
-            match self {
-                Insert(i) => LogTime::from(*i),
-                Delete(i) => LogTime::from(*i),
-            }
+            self.time
+
         }
         fn site(&self) -> SiteId {
-            SiteId(0)
+            self.local_id
         }
     }
 
@@ -194,7 +216,7 @@ mod test {
     fn delete_before_insert() {
         let mut barrier = CausalityBarrier::new(0.into());
 
-        let del = CausalMessage { time: 0.into(), local_id: 1.into(), msg: Op::Delete(0) };
+        let del = CausalMessage { time: 0.into(), local_id: 1.into(), msg: Op::Delete(1.into(), 1.into()) };
         let ins = CausalMessage { time: 1.into(), local_id: 1.into(), msg: Op::Insert(0) };
         assert_eq!(barrier.ingest(del), None);
         assert_eq!(barrier.ingest(ins), None);
@@ -205,14 +227,24 @@ mod test {
         let mut barrier = CausalityBarrier::new(0.into());
 
         let ins = CausalMessage { time: 1.into(), local_id: 1.into(), msg: Op::Insert(0) };
-        assert_eq!(barrier.ingest(ins), Some(Op::Insert(0)));
+        assert_eq!(barrier.ingest(ins.clone()), Some(ins.clone()));
+    }
+
+    #[test]
+    fn insert_then_delete () {
+        let mut barrier = CausalityBarrier::new(0.into());
+
+        let ins = CausalMessage { time: 0.into(), local_id: 1.into(), msg: Op::Insert(0) };
+        let del = CausalMessage { time: 1.into(), local_id: 1.into(), msg: Op::Delete(1.into(), 1.into()) };
+        assert_eq!(barrier.ingest(ins.clone()), Some(ins));
+        assert_eq!(barrier.ingest(del.clone()), Some(del));
     }
 
     #[test]
     fn delete_before_insert_multiple_sites() {
         let mut barrier = CausalityBarrier::new(0.into());
 
-        let del = CausalMessage { time: 0.into(), local_id: 2.into(), msg: Op::Delete(0) };
+        let del = CausalMessage { time: 0.into(), local_id: 2.into(), msg: Op::Delete(1.into(), 5.into()) };
         let ins = CausalMessage { time: 5.into(), local_id: 1.into(), msg: Op::Insert(0) };
         assert_eq!(barrier.ingest(del), None);
         assert_eq!(barrier.ingest(ins), None);

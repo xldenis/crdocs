@@ -25,10 +25,10 @@ use crate::editor::*;
 use crate::network::*;
 
 #[wasm_bindgen]
-pub async fn test_network() -> Editor {
+pub async fn create_editor(url: String) -> Editor {
     console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
-    let (id, init_pr, io) = connect_and_get_id("").await.unwrap();
+    let (id, init_pr, io) = connect_and_get_id(&url).await.unwrap();
 
     web_sys::console::log_2(&"peer_id=%d".into(), &id.into());
 

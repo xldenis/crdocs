@@ -42,13 +42,21 @@ enum EditorOp {
 }
 
 impl CausalOp for Op {
-    fn happens_before(&self) -> bool {
+    // type Id = Identifier;
+
+    fn happens_before(&self) -> Option<(SiteId, LogTime)> {
         match self {
-            Op::Insert{..} => false,
-            Op::Delete{..} => true,
+            Op::Insert{..} => None,
+            Op::Delete{remote: (s, t) ,..} => Some((SiteId::from(*s), LogTime::from(*t))),
         }
     }
+    // fn id(&self) -> Self::Id {
+    //     match self {
+    //         Op::Insert{id,..} => id,
+    //         Op::Delete{id,..} => id,
 
+    //     }.clone()
+    // }
     fn site(&self) -> SiteId {
         match self {
             Op::Insert{site_id, ..} => SiteId::from(*site_id),
@@ -95,8 +103,12 @@ impl Editor {
 
                         // make sure this is really required unsure it actually is. Seems like in
                         // some specific cases the very first (anti entropy) message gets dropped?
-                        Delay::new(Duration::from_millis(150)).await.unwrap();
+                        Delay::new(Duration::from_millis(750)).await.unwrap();
+
                         local_net.unicast(remote, &msg).unwrap();
+                        // log::debug!("buffer: {:?}", local_net.peers.borrow()[&remote].1.buffered());
+                        // log::dxebug!("buffer: {:?}", local_net.peers.borrow()[&remote].1.buffered());
+
                     }
                     NetEvent::Msg(msg) => { Self::handle_message(msg, &local_net, &mut local_barrier.borrow_mut(), &local_store, &local_change.borrow()).await }
                 }
@@ -115,9 +127,7 @@ impl Editor {
         match op {
             AntiEntropyReq { site_id, vec } => {
                 // Here are all the operations that we've seen and need to find.
-                log::debug!("{:?}", causal.vvwe());
                 let to_find = causal.diff_from(&vec);
-                log::debug!("{:?}", to_find);
                 let mut resp = Vec::new();
                 // 1. Search the local LSeq.
                 for e in lseq.raw_text() {
@@ -133,12 +143,10 @@ impl Editor {
                     resp.push(del.clone());
                 }
 
-                log::info!("anti-entropy response: {:?}", resp);
                 net.unicast(site_id, &serde_json::to_string(&AntiEntropyResp { vec: resp }).unwrap()).unwrap();
 
             }
             AntiEntropyResp {vec} => {
-                log::info!("{:?}", vec);
                 for op in vec {
                     if let Some(op) = causal.ingest(op) {
                         lseq.apply(&op);
@@ -149,6 +157,7 @@ impl Editor {
             }
             Op { op } => {
                 if let Some(op) = causal.ingest(op) {
+                    net.broadcast(&serde_json::to_string(&Op {op: op.clone()}).unwrap()).await.unwrap();
                     lseq.apply(&op);
                 }
 
@@ -185,7 +194,7 @@ impl Editor {
 
         let loc_net = self.network.clone();
         future_to_promise(async move {
-            loc_net.broadcast(&serde_json::to_string(&caus).unwrap()).await?;
+            loc_net.broadcast(&serde_json::to_string(&EditorOp::Op {op: caus}).unwrap()).await?;
             Ok(true.into())
         })
     }

@@ -24,6 +24,7 @@ pub enum Op {
         c: char
     },
     Delete{
+        remote: (u32, u64),
         #[serde(flatten)]
         id: Identifier,
         site_id: u32,
@@ -42,7 +43,7 @@ impl LSeq {
         }
     }
 
-    pub fn do_delete(&mut self, ix: Identifier) {
+    pub fn do_delete(&mut self, ix: &Identifier) {
         // Deletes only have an effect if the identifier is already in the tree
         if let Ok(i) = self.text.binary_search_by(|e| e.0.cmp(&ix)) {
             self.text.remove(i);
@@ -52,7 +53,7 @@ impl LSeq {
     pub fn apply(&mut self, op: &Op){
         match op {
             Op::Insert{id, clock, site_id, c} => self.do_insert(id.clone(), *clock, *site_id, *c),
-            Op::Delete{id,..} => self.do_delete(id.clone()),
+            Op::Delete{id,..} => self.do_delete(id),
         }
     }
 
@@ -85,8 +86,13 @@ impl LSeq {
     }
 
     pub fn local_delete(&mut self, ix: usize) -> Op {
-        let ident = self.text[ix].0.clone();
-        let op = Op::Delete{ id: ident, clock: self.clock, site_id: self.gen.site_id };
+        let data = self.text[ix].clone();
+
+        // // bug!! should be the
+        let op = Op::Delete{ id: data.0, remote: (data.2, data.1), clock: self.clock, site_id: self.gen.site_id };
+
+        // let ident = self.text[ix].0.clone();
+        // let op = Op::Delete{ id: ident, clock: self.clock, site_id: self.gen.site_id };
 
         self.clock += 1;
 
@@ -98,7 +104,7 @@ impl LSeq {
     pub fn text(&self) -> String {
         self.text.iter().map(|(_, _, _, c,)| c).collect::<String>()
     }
-    
+
     pub fn raw_text(&self) -> & Vec<Entry> {
         &self.text
     }
@@ -120,6 +126,7 @@ mod test {
 
         assert_eq!(site1.text(), "abc");
     }
+
     #[test]
     fn test_inserts() {
         // A simple smoke test to ensure that insertions work properly.

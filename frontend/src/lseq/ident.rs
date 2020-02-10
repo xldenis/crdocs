@@ -111,7 +111,7 @@ impl IdentGen {
             match p.path.get(lower_bound) {
                 Some((ix, _)) if ix + 1 < self.width_at(lower_bound) => {
                     let next_index = self.index_in_range(*ix + 1, self.width_at(lower_bound), lower_bound as u32);
-                    return self.push_index(p, next_index);
+                    return self.replace_last(p, lower_bound, next_index);
                 }
                 Some(_) => {}
                 None => {
@@ -240,7 +240,6 @@ mod test {
             // let b = Identifier { path: vec![(4, 1)]};
 
             let c = gen.alloc(&a, &b);
-            println!("{:?}", c);
             assert!(a < c);
             assert!(c < b);
         }
@@ -249,7 +248,6 @@ mod test {
             let b = Identifier { path: vec![(5, 1), (6, 1), (6, 1), (6, 0), (0, 0), (507, 0)] };
 
             let c = gen.alloc(&a, &b);
-            println!("{:?}", c);
             assert!(a < c);
             assert!(c < b);
         }

@@ -70,35 +70,36 @@ where
         while let Some(_) = i.next().await {
             futures::select! {
                 msg = peer_events.next() => {
-                    if let Some(c) = msg {
-                        warn!("sending ice candidate remote_id={:?}", self.remote_id);
-                        Self::send_candidate(&mut self.sender, c).await
+                    debug!("sending ice candidate remote_id={:?}", self.remote_id);
+                    Self::send_candidate(&mut self.sender, msg).await
+                },
+                msg = self.peer_recv.next() => {
+                    match msg {
+                        Some(Ice { ice}) => {
+                            warn!("received ice candidate candidate={:?}", ice);
+                            Self::add_candidate(&ice, peer).await;
+                        }
+                        _ => {
+                            warn!("finished recieving ice candidates");
+                            self.peer_recv.close()
+                        }
                     }
                 },
-                msg = self.peer_recv.next() => if let Some(Ice { ice }) = msg {
-                    warn!("received ice candidate candidate={:?}", ice);
-                    Self::add_candidate(&ice, peer).await;
-                },
-                complete => break,
-                default => {
-                    if peer.ice_connection_state() != web_sys::RtcIceConnectionState::New  {
-                        break
-                    }
-                }
+                complete => { break },
             };
         }
     }
 
     // Send local candidates to a remote peer
-    async fn send_candidate(sender: &mut S, ice: web_sys::RtcIceCandidate) {
-        match js_sys::JSON::stringify(&ice.into()) {
-            Err(_) => {
-                warn!("couldn't serialize ICE candidate");
-            }
-            Ok(m) => {
-                sender.send(HandshakeProtocol::Ice { ice: m.into() }).await.expect("");
+    async fn send_candidate(sender: &mut S, ice: Option<web_sys::RtcIceCandidate>) {
+        match ice {
+            None => sender.send(HandshakeProtocol::IceDone {}).await.unwrap(),
+            Some(ice) => {
+                let ice_string =  js_sys::JSON::stringify(&ice.into()).unwrap();
+                sender.send(HandshakeProtocol::Ice { ice: ice_string.into() }).await.expect("");
             }
         }
+
     }
 
     // Add a remote ICE candidate to a local peer connection

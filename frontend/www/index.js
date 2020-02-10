@@ -8,7 +8,11 @@ const editor_div = document.getElementById('editor');
 const peers_span = document.getElementById('peers');
 editor_div.value = "";
 
-wasm.test_network().then(function (editor) {
+let signal_url = new URL(window.location)
+signal_url.port = 3012
+signal_url.protocol = "ws:"
+
+wasm.create_editor(signal_url.toString()).then(function (editor) {
   let prev_value = "";
   editor_div.oninput = function (e) {
     const ed = e.target;
@@ -17,14 +21,11 @@ wasm.test_network().then(function (editor) {
     let d = diff.diffChars(prev_value, editor_div.value);
     let ix = 0;
 
-    console.log(d);
     for (const p of d) {
       for (const c of p.value) {
         if (p.added) {
-          console.log({ ix: ix, c: c });
           editor.insert(c, ix);
         } else if (p.removed) {
-          console.log({ ix: ix });
           editor.delete(ix);
         }
         ix++;
@@ -34,9 +35,9 @@ wasm.test_network().then(function (editor) {
   }
 
 
-  editor.onchange(function(t) { 
-    editor_div.value = t; 
-    prev_value = t; 
+  editor.onchange(function(t) {
+    editor_div.value = t;
+    prev_value = t;
     peers_span.textContent = editor.num_connected_peers();
 
   });

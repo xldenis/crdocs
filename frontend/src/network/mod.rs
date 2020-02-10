@@ -20,8 +20,8 @@ use log::*;
 
 mod handshake;
 
-pub async fn connect_and_get_id(_url: &str) -> Result<(u32, u32, WsIo), Box<dyn error::Error>> {
-    let (_, mut wsio) = WsStream::connect("ws://127.0.0.1:3012", None).await?;
+pub async fn connect_and_get_id(url: &str) -> Result<(u32, u32, WsIo), Box<dyn error::Error>> {
+    let (_, mut wsio) = WsStream::connect(url, None).await?;
 
     let init_msg = wsio.next().await.expect("first message");
 
@@ -46,6 +46,7 @@ pub enum HandshakeProtocol {
     Offer { off: String },
     Answer { ans: String },
     Ice { ice: String },
+    IceDone {},
 }
 
 #[derive(Deserialize, Serialize)]
@@ -61,7 +62,7 @@ pub enum NetEvent {
 }
 
 pub struct NetworkLayer {
-    peers: RefCell<HashMap<u32, (SimplePeer, DataChannelStream)>>,
+    pub peers: RefCell<HashMap<u32, (SimplePeer, DataChannelStream)>>,
     signal: UnboundedSender<WsMessage>,
     local_chan: UnboundedSender<NetEvent>,
 }
@@ -167,7 +168,7 @@ impl NetworkLayer {
 
                 let (dcs, rx) = DataChannelStream::new(dc);
                 let mut recv_from_peer = self.local_chan.clone();
-                info!("dc state {}", &dcs.ready());
+
                 self.peers.borrow_mut().insert(handshake.remote_id, (peer, dcs));
 
                 // Forward messages from the peer to single queue
