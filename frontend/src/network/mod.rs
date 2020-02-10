@@ -54,14 +54,20 @@ struct Sig {
     msg: HandshakeProtocol,
 }
 
+#[derive(Debug)]
+pub enum NetEvent {
+    Connection(u32),
+    Msg(JsValue),
+}
+
 pub struct NetworkLayer {
     peers: RefCell<HashMap<u32, (SimplePeer, DataChannelStream)>>,
     signal: UnboundedSender<WsMessage>,
-    local_chan: UnboundedSender<JsValue>,
+    local_chan: UnboundedSender<NetEvent>,
 }
 
 impl NetworkLayer {
-    pub async fn new(signalling_channel: WsIo) -> (Rc<NetworkLayer>, UnboundedReceiver<JsValue>) {
+    pub async fn new(signalling_channel: WsIo) -> (Rc<NetworkLayer>, UnboundedReceiver<NetEvent>) {
         let (out, inp) = signalling_channel.split();
         let (to_sig, from_sig) = unbounded();
 
@@ -106,7 +112,7 @@ impl NetworkLayer {
                     peer_signalling.insert(id, tx);
 
                     let handshake = handshake::State {
-                        initiator: true,
+                        initiator: false,
                         sender: peer_sink,
                         remote_id: id,
                         peer_recv: rx,
@@ -126,7 +132,7 @@ impl NetworkLayer {
                             // Set initiator to false, because in this state, we've just received an
                             // offer.
                             let handshake = handshake::State {
-                                initiator: false,
+                                initiator: true,
                                 sender: peer_sink,
                                 remote_id: id,
                                 peer_recv: rx,
@@ -155,15 +161,25 @@ impl NetworkLayer {
     {
         match handshake.handle_new_peer().await {
             Ok((peer, dc)) => {
+                if peer.ice_connection_state() != RtcIceConnectionState::Connected {
+                    return;
+                }
+
                 let (dcs, rx) = DataChannelStream::new(dc);
-                let recv_from_peer = self.local_chan.clone();
+                let mut recv_from_peer = self.local_chan.clone();
+                info!("dc state {}", &dcs.ready());
                 self.peers.borrow_mut().insert(handshake.remote_id, (peer, dcs));
 
                 // Forward messages from the peer to single queue
                 let this = self.clone();
                 let id = handshake.remote_id;
+
+                if handshake.initiator {
+                    recv_from_peer.send(NetEvent::Connection(handshake.remote_id)).await.unwrap();
+                }
+
                 spawn_local(async move {
-                    let _ = rx.map(Ok).forward(recv_from_peer).await;
+                    let _ = rx.map(NetEvent::Msg).map(Ok).forward(recv_from_peer).await;
                     this.peers.borrow_mut().remove(&id);
                 });
 
@@ -185,6 +201,19 @@ impl NetworkLayer {
     pub async fn broadcast(&self, msg: &str) -> Result<(), js_sys::Error> {
         for (_, (_, tx)) in self.peers.borrow_mut().iter_mut() {
             tx.chan.send_with_str(msg)?;
+        }
+        Ok(())
+    }
+
+    pub fn unicast(&self, ix: u32, msg: &str) -> Result<(), js_sys::Error> {
+        match self.peers.borrow().get(&ix) {
+            Some((_, stream)) => {
+                stream.chan.send_with_str(msg)?;
+                log::info!("{} {}", stream.ready(), stream.buffered());
+            }
+            None => {
+                Err(js_sys::Error::new("not connected to peer"))?;
+            }
         }
         Ok(())
     }

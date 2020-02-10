@@ -7,7 +7,7 @@ use web_sys::{
 };
 
 use wasm_bindgen::JsValue;
-pub use web_sys::{RtcDataChannel, RtcDataChannelInit, RtcIceConnectionState, RtcIceGatheringState};
+pub use web_sys::{RtcDataChannel, RtcDataChannelInit, RtcIceConnectionState, RtcIceGatheringState, RtcDataChannelState};
 
 use std::rc::*;
 pub struct WebRtc {
@@ -217,6 +217,17 @@ impl DataChannelStream {
         });
 
         (DataChannelStream { chan, on_data: el }, rx)
+    }
+
+    pub fn ready(&self) -> bool {
+        match self.chan.ready_state() {
+            RtcDataChannelState::Open => true,
+            _ => false,
+        }
+    }
+
+    pub fn buffered(&self) -> u32 {
+        self.chan.buffered_amount()
     }
 
     pub fn send(&mut self, msg: &str) -> Result<(), Err> {

@@ -6,11 +6,23 @@
 //
 
 use derive_more::{Add, From, Into};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, self, Serialize};
 use std::collections::*;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From, Deserialize, Serialize)]
-pub struct SiteId(pub u32);
+pub struct SiteId(
+    #[serde(deserialize_with = "from_str")]
+    pub u32);
+use std::str::FromStr;
+
+fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+    where T: FromStr,
+          T::Err: core::fmt::Display,
+          D: Deserializer<'de>
+{
+    let s = String::deserialize(deserializer)?;
+    T::from_str(&s).map_err(serde::de::Error::custom)
+}
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, PartialOrd, Ord, Hash, Add, From, Into, Deserialize, Serialize)]
 pub struct LogTime(u64);
@@ -25,8 +37,9 @@ pub struct CausalityBarrier<T: CausalOp> {
     pub buffer: HashMap<(SiteId, LogTime), T>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VectorEntry {
+    // The version of the next message we'd like to see
     max_version: LogTime,
     exceptions: HashSet<LogTime>,
 }
@@ -49,7 +62,7 @@ impl VectorEntry {
         // We've just found an exception
         if clk < self.max_version {
             self.exceptions.take(&clk);
-        } else if clk == self.max_version + 1.into() {
+        } else if clk == self.max_version {
             self.max_version = self.max_version + 1.into();
         } else {
             let mut x = self.max_version + 1.into();
@@ -61,7 +74,7 @@ impl VectorEntry {
     }
 
     pub fn is_ready(&self, clk: LogTime) -> bool {
-        clk <= self.max_version && !self.exceptions.contains(&clk)
+        clk < self.max_version && !self.exceptions.contains(&clk)
     }
 
     /// Calculate the difference between a remote VectorEntry and ours.
@@ -93,38 +106,38 @@ impl<T: CausalOp> CausalityBarrier<T> {
         CausalityBarrier { peers: HashMap::new(), buffer: HashMap::new(), local_id: site_id }
     }
 
-    pub fn ingest(&mut self, msg: CausalMessage<T>) -> Option<T> {
-        let v = self.peers.entry(msg.local_id).or_insert_with(VectorEntry::new);
+    pub fn ingest(&mut self, msg: T) -> Option<T> {
+        let v = self.peers.entry(msg.site()).or_insert_with(VectorEntry::new);
 
-        v.increment(msg.time);
+        v.increment(msg.clock());
 
         // Ok so it's an exception but maybe we can still integrate it if it's not constrained
         // by a happens-before relation.
         // For example: we can always insert into most CRDTs but we can only delete if the
         // corresponding insert happened before!
-        match msg.msg.happens_before() {
+        match msg.happens_before() {
             // Dang! we have a happens before relation!
             true => {
                 // Let's buffer this operation then.
-                self.buffer.insert((msg.msg.site(), msg.msg.clock()), msg.msg);
+                self.buffer.insert((msg.site(), msg.clock()), msg);
                 // and do nothing
                 None
             }
             false => {
                 // Ok so we're not causally constrained, but maybe we already saw an associated
                 // causal operation? If so let's just delete the pair
-                match self.buffer.remove(&(msg.msg.site(), msg.msg.clock())) {
+                match self.buffer.remove(&(msg.site(), msg.clock())) {
                     Some(_) => None,
-                    None => Some(msg.msg),
+                    None => Some(msg),
                 }
             }
         }
     }
 
     pub fn expel(&mut self, msg: T) -> T {
-        self.peers.entry(self.local_id).or_insert_with(VectorEntry::new)
-            .max_version = msg.clock();
-
+        let v = self.peers.entry(msg.site()).or_insert_with(VectorEntry::new);
+        v.increment(msg.clock());
+        log::info!("{:?} {:?}", msg.clock(), v);
         msg
     }
 
@@ -138,6 +151,10 @@ impl<T: CausalOp> CausalityBarrier<T> {
             ret.insert(*site_id, e_diff);
         }
         ret 
+    }
+
+    pub fn vvwe(&self) -> HashMap<SiteId, VectorEntry> {
+        self.peers.clone()
     }
 
 }

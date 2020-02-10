@@ -41,4 +41,5 @@ pub async fn test_network() -> Editor {
     }
 
     Editor::new(net, id, rx).await
+
 }

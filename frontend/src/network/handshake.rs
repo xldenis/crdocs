@@ -23,6 +23,15 @@ where
         debug!("starting handshake with {}", self.remote_id);
         // LETS DO THE WEBRTC DANCE
         if self.initiator {
+            debug!("waiting for offer remote_id={}", self.remote_id);
+            // 2. Handle the offer
+            if let Offer { off } = self.peer_recv.next().await.expect("handle_new_peer") {
+                debug!("got offer remote_id={}", self.remote_id);
+                let ans = peer.handle_offer(off).await?;
+                // 3. Create an answer
+                self.sender.send(Answer { ans }).await.expect("handle_new_peer");
+            }
+        } else {
             debug!("sending offer remote_id={}", self.remote_id);
             // 1. Create an offer
             let off = peer.create_offer().await?;
@@ -34,15 +43,6 @@ where
                 peer.handle_answer(ans).await?;
             }
             debug!("got answer remote_id={}", self.remote_id);
-        } else {
-            debug!("waiting for offer remote_id={}", self.remote_id);
-            // 2. Handle the offer
-            if let Offer { off } = self.peer_recv.next().await.expect("handle_new_peer") {
-                debug!("got offer remote_id={}", self.remote_id);
-                let ans = peer.handle_offer(off).await?;
-                // 3. Create an answer
-                self.sender.send(Answer { ans }).await.expect("handle_new_peer");
-            }
         }
 
         //let mut sink = self.signal.clone();

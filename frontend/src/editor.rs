@@ -34,10 +34,10 @@ use serde::*;
 #[serde(tag = "kind")]
 enum EditorOp {
     AntiEntropyResp { vec: Vec<Op> },
-    AntiEntropyReq { vec: std::collections::HashMap<SiteId, VectorEntry> },
+    AntiEntropyReq { site_id: u32, vec: std::collections::HashMap<SiteId, VectorEntry> },
     Op {
         #[serde(flatten)]
-        op: CausalMessage<Op>
+        op: Op
     },
 }
 
@@ -70,7 +70,7 @@ fn shared<T>(t: T) -> Shared<T> {
 }
 
 impl Editor {
-    pub async fn new(net: std::rc::Rc<NetworkLayer>, id: u32, mut rx: UnboundedReceiver<JsValue>) -> Self {
+    pub async fn new(net: std::rc::Rc<NetworkLayer>, id: u32, mut rx: UnboundedReceiver<NetEvent>) -> Self {
         let store = Rc::new(Mutex::new(LSeq::new(id)));
         let local_store = store.clone();
 
@@ -83,42 +83,22 @@ impl Editor {
 
         spawn_local(async move {
             while let Some(msg) = rx.next().await {
-                let op = serde_json::from_str(&msg.as_string().unwrap()).unwrap();
-                let mut lseq = local_store.lock().unwrap();
-                use EditorOp::*;
+                log::info!("{:?}", msg);
+                match msg {
+                    NetEvent::Connection(remote) => {
+                        //We just connected to a new peer! Let's check to see if they have any
+                        //events we didn't see.
 
-                match op {
-                    AntiEntropyReq { vec } => {
-                        // Here are all the operations that we've seen and need to find.
-                        let to_find = local_barrier.borrow().diff_from(&vec);
-                        let mut resp = Vec::new();
-                        // 1. Search the local LSeq.
-                        for e in lseq.raw_text() {
-                            if let Some(set) = to_find.get(&e.2.into()) {
-                                if set.contains(&LogTime::from(e.1)) {
-                                    resp.push(crate::lseq::Op::Insert { id: e.0.clone(), clock: e.1, site_id: e.2, c: e.3 });
-                                }
-                            }
-                        }
+                        let msg = serde_json::to_string(&EditorOp::AntiEntropyReq { site_id: id, vec: local_barrier.borrow().vvwe()}).unwrap();
+                        use wasm_timer::Delay;
+                        use core::time::Duration;
 
-                        // 2. Search the causal buffer for unapplied removes
-                        for (_causal_id, del) in local_barrier.borrow().buffer.iter() {
-                            resp.push(del.clone());
-                        }
-
-                        local_net.broadcast(&serde_json::to_string(&AntiEntropyResp { vec: resp }).unwrap()).await.unwrap();
-
+                        // make sure this is really required unsure it actually is. Seems like in
+                        // some specific cases the very first (anti entropy) message gets dropped?
+                        Delay::new(Duration::from_millis(150)).await.unwrap();
+                        local_net.unicast(remote, &msg).unwrap();
                     }
-                    AntiEntropyResp {vec} => {
-                        log::info!("{:?}", vec);
-                    }
-                    Op { op } => {
-                        if let Some(op) = local_barrier.borrow_mut().ingest(op) {
-                            lseq.apply(&op);
-                        }
-
-                        Self::notify_js(local_change.clone(), &lseq.text());
-                    }
+                    NetEvent::Msg(msg) => { Self::handle_message(msg, &local_net, &mut local_barrier.borrow_mut(), &local_store, &local_change.borrow()).await }
                 }
 
             }
@@ -127,8 +107,58 @@ impl Editor {
         Editor { network: net, store, onchange, causal: barrier, site_id: id }
     }
 
-    fn notify_js(this: Shared<Option<Function>>, s: &str) {
-        match &*this.borrow() {
+    async fn handle_message(msg: JsValue, net: &NetworkLayer, causal: &mut CausalityBarrier<Op>, lseq: &Mutex<LSeq>, notif: &Option<Function>) {
+        let op = serde_json::from_str(&msg.as_string().unwrap()).expect("parsing message");
+        let mut lseq = lseq.lock().unwrap();
+        use EditorOp::*;
+
+        match op {
+            AntiEntropyReq { site_id, vec } => {
+                // Here are all the operations that we've seen and need to find.
+                log::debug!("{:?}", causal.vvwe());
+                let to_find = causal.diff_from(&vec);
+                log::debug!("{:?}", to_find);
+                let mut resp = Vec::new();
+                // 1. Search the local LSeq.
+                for e in lseq.raw_text() {
+                    if let Some(set) = to_find.get(&e.2.into()) {
+                        if set.contains(&LogTime::from(e.1)) {
+                            resp.push(crate::lseq::Op::Insert { id: e.0.clone(), clock: e.1, site_id: e.2, c: e.3 });
+                        }
+                    }
+                }
+
+                // 2. Search the causal buffer for unapplied removes
+                for (_causal_id, del) in causal.buffer.iter() {
+                    resp.push(del.clone());
+                }
+
+                log::info!("anti-entropy response: {:?}", resp);
+                net.unicast(site_id, &serde_json::to_string(&AntiEntropyResp { vec: resp }).unwrap()).unwrap();
+
+            }
+            AntiEntropyResp {vec} => {
+                log::info!("{:?}", vec);
+                for op in vec {
+                    if let Some(op) = causal.ingest(op) {
+                        lseq.apply(&op);
+                    }
+                }
+
+                Self::notify_js(notif, &lseq.text());
+            }
+            Op { op } => {
+                if let Some(op) = causal.ingest(op) {
+                    lseq.apply(&op);
+                }
+
+                Self::notify_js(notif, &lseq.text());
+            }
+        }
+    }
+
+    fn notify_js(this: &Option<Function>, s: &str) {
+        match this {
             Some(x) => {
                 x.call1(&JsValue::NULL, &s.into()).unwrap();
             }
@@ -144,7 +174,7 @@ impl Editor {
         let caus = self.causal.borrow_mut().expel(op);
         let loc_net = self.network.clone();
         future_to_promise(async move {
-            loc_net.broadcast(&serde_json::to_string(&caus).unwrap()).await?;
+            loc_net.broadcast(&serde_json::to_string(&EditorOp::Op {op: caus}).unwrap()).await?;
             Ok(true.into())
         })
     }
@@ -162,6 +192,10 @@ impl Editor {
 
     pub fn onchange(&mut self, f: &js_sys::Function) {
         self.onchange.replace(Some(f.clone()));
+    }
+
+    pub fn num_connected_peers(&mut self) -> usize {
+        self.network.num_connected_peers()
     }
 }
 
