@@ -85,17 +85,15 @@ impl LSeq {
 
     }
 
-    pub fn local_delete(&mut self, ix: usize) -> Op {
+    pub fn local_delete(&mut self, mut ix: usize) -> Op {
+        if ix >= self.text.len()  {
+            ix = self.text.len() - 1;
+        }
         let data = self.text[ix].clone();
 
-        // // bug!! should be the
         let op = Op::Delete{ id: data.0, remote: (data.2, data.1), clock: self.clock, site_id: self.gen.site_id };
 
-        // let ident = self.text[ix].0.clone();
-        // let op = Op::Delete{ id: ident, clock: self.clock, site_id: self.gen.site_id };
-
         self.clock += 1;
-
         self.apply(&op);
         op
 
