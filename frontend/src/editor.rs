@@ -1,5 +1,5 @@
 use crate::causal::*;
-use crate::lseq::{ident::*, *};
+use crate::lseq::*;
 use crate::network::*;
 
 use futures::channel::mpsc::*;
@@ -98,16 +98,7 @@ impl Editor {
                         //events we didn't see.
 
                         let msg = serde_json::to_string(&EditorOp::AntiEntropyReq { site_id: id, vec: local_barrier.borrow().vvwe()}).unwrap();
-                        use wasm_timer::Delay;
-                        use core::time::Duration;
-
-                        // make sure this is really required unsure it actually is. Seems like in
-                        // some specific cases the very first (anti entropy) message gets dropped?
-                        Delay::new(Duration::from_millis(750)).await.unwrap();
-
                         local_net.unicast(remote, &msg).unwrap();
-                        // log::debug!("buffer: {:?}", local_net.peers.borrow()[&remote].1.buffered());
-                        // log::dxebug!("buffer: {:?}", local_net.peers.borrow()[&remote].1.buffered());
 
                     }
                     NetEvent::Msg(msg) => { Self::handle_message(msg, &local_net, &mut local_barrier.borrow_mut(), &local_store, &local_change.borrow()).await }

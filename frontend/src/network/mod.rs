@@ -20,6 +20,8 @@ use log::*;
 
 mod handshake;
 
+use handshake::HandshakeProtocol;
+
 pub async fn connect_and_get_id(url: &str) -> Result<(u32, u32, WsIo), Box<dyn error::Error>> {
     let (_, mut wsio) = WsStream::connect(url, None).await?;
 
@@ -38,15 +40,6 @@ pub async fn connect_and_get_id(url: &str) -> Result<(u32, u32, WsIo), Box<dyn e
         }
         _ => panic!("First message should be json"),
     }
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum HandshakeProtocol {
-    Start {},
-    Offer { off: String },
-    Answer { ans: String },
-    Ice { ice: String },
-    IceDone {},
 }
 
 #[derive(Deserialize, Serialize)]
@@ -161,12 +154,12 @@ impl NetworkLayer {
         S::Error: std::fmt::Debug,
     {
         match handshake.handle_new_peer().await {
-            Ok((peer, dc)) => {
+            Ok((peer, (dcs, rx))) => {
                 if peer.ice_connection_state() != RtcIceConnectionState::Connected {
                     return;
                 }
 
-                let (dcs, rx) = DataChannelStream::new(dc);
+                // let (dcs, rx) = DataChannelStream::new(dc);
                 let mut recv_from_peer = self.local_chan.clone();
 
                 self.peers.borrow_mut().insert(handshake.remote_id, (peer, dcs));
@@ -210,7 +203,6 @@ impl NetworkLayer {
         match self.peers.borrow().get(&ix) {
             Some((_, stream)) => {
                 stream.chan.send_with_str(msg)?;
-                log::info!("{} {}", stream.ready(), stream.buffered());
             }
             None => {
                 Err(js_sys::Error::new("not connected to peer"))?;

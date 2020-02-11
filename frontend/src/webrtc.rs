@@ -202,8 +202,8 @@ impl SimplePeer {
 
 pub struct DataChannelStream {
     pub chan: RtcDataChannel,
-    on_data: EventListener,
-    on_close: EventListener,
+    _on_data: EventListener,
+    _on_close: EventListener,
 
     //tx: UnboundedSender<JsValue>,
     //rx : UnboundedReceiver<JsValue>,
@@ -219,12 +219,11 @@ impl DataChannelStream {
             loc_tx.unbounded_send(event.data()).expect("send msg");
         });
 
-        let closing = EventListener::new(&chan, "close", move |msg| {
-            log::debug!("closing data channel");
+        let closing = EventListener::new(&chan, "close", move |_| {
             tx.close_channel();
         });
 
-        (DataChannelStream { chan, on_data: el, on_close: closing }, rx)
+        (DataChannelStream { chan, _on_data: el, _on_close: closing }, rx)
     }
 
     pub fn ready(&self) -> bool {

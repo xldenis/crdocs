@@ -178,7 +178,7 @@ mod test {
         Delete(SiteId, LogTime),
     }
 
-    use Op::*;
+    // use Op::*;
 
     #[derive(PartialEq, Debug, Hash, Clone)]
     pub struct CausalMessage {

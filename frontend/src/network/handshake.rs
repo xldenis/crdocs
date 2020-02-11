@@ -2,11 +2,20 @@ use super::*;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::Sink;
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum HandshakeProtocol {
+    Start {},
+    Offer { off: String },
+    Answer { ans: String },
+    Ice { ice: String },
+    IceDone {},
+}
+
 pub struct State<S> {
     pub initiator: bool,
     pub sender: S,
     pub remote_id: u32,
-    pub peer_recv: UnboundedReceiver<super::HandshakeProtocol>,
+    pub peer_recv: UnboundedReceiver<HandshakeProtocol>,
 }
 
 impl<S> State<S>
@@ -14,7 +23,7 @@ where
     S: Sink<super::HandshakeProtocol> + Unpin,
     S::Error: std::fmt::Debug,
 {
-    pub async fn handle_new_peer(&mut self) -> Result<(SimplePeer, RtcDataChannel), js_sys::Error> {
+    pub async fn handle_new_peer(&mut self) -> Result<(SimplePeer, (DataChannelStream, UnboundedReceiver<JsValue>)), js_sys::Error> {
         use HandshakeProtocol::*;
 
         let (mut peer, peer_events) = SimplePeer::new()?;
@@ -45,15 +54,15 @@ where
             debug!("got answer remote_id={}", self.remote_id);
         }
 
-        //let mut sink = self.signal.clone();
+        // It is absolutely vital to setup the DCS here since we could miss messages sent during ICE candidate exchange
+        let (dcs, rx) = DataChannelStream::new(dc);
 
         info!("Exchanging ICE candidates remote_id={}", self.remote_id);
         self.exchange_ice_candidates(&mut peer, peer_events).await;
 
         info!("finished exchanging ICE state={:?} remote_id={}", peer.ice_connection_state(), self.remote_id);
 
-        // self.peers.borrow_mut().push((peer, dcs));
-        Ok((peer, dc))
+        Ok((peer, (dcs, rx)))
     }
 
     async fn exchange_ice_candidates(
@@ -69,10 +78,6 @@ where
 
         while let Some(_) = i.next().await {
             futures::select! {
-                msg = peer_events.next() => {
-                    debug!("sending ice candidate remote_id={:?}", self.remote_id);
-                    Self::send_candidate(&mut self.sender, msg).await
-                },
                 msg = self.peer_recv.next() => {
                     match msg {
                         Some(Ice { ice}) => {
@@ -85,20 +90,27 @@ where
                         }
                     }
                 },
+                msg = peer_events.next() => {
+                    debug!("sending ice candidate remote_id={:?}", self.remote_id);
+                    if let Err(_) = Self::send_candidate(&mut self.sender, msg).await {
+                        warn!("failed to send ICE candidate");
+                    };
+                },
                 complete => { break },
             };
         }
     }
 
     // Send local candidates to a remote peer
-    async fn send_candidate(sender: &mut S, ice: Option<web_sys::RtcIceCandidate>) {
+    async fn send_candidate(sender: &mut S, ice: Option<web_sys::RtcIceCandidate>) -> Result<(), S::Error> {
         match ice {
-            None => sender.send(HandshakeProtocol::IceDone {}).await.unwrap(),
+            None => {sender.send(HandshakeProtocol::IceDone {}).await?},
             Some(ice) => {
                 let ice_string =  js_sys::JSON::stringify(&ice.into()).unwrap();
-                sender.send(HandshakeProtocol::Ice { ice: ice_string.into() }).await.expect("");
+                sender.send(HandshakeProtocol::Ice { ice: ice_string.into() }).await?;
             }
-        }
+        };
+        Ok(())
 
     }
 
