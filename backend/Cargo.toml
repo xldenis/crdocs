@@ -9,10 +9,10 @@ edition = "2018"
 [dependencies]
 
 # tungstenite = "*"
-async-std = "*"
-futures = "^0.3"
-async-tungstenite = "0.3.1"
-tide = { version = "^0.6" }
-tide-static-files = { git = "https://github.com/xldenis/tide-static-files" }
+tokio = { version = "0.2", features = ["macros"] }
+warp = "0.2"
+tokio-tungstenite = "*"
+futures = "*"
 serde_json = "*"
 serde = { version = "*", features = ["derive"] }
+env_logger = "*"

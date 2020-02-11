@@ -14,9 +14,10 @@ editor_div.value = "";
 let signal_url = new URL(window.location)
 signal_url.port = 3012
 signal_url.protocol = "ws:"
+signal_url.pathname = "sig"
+let editor_window = new mde({ element: editor_div });
 
 wasm.create_editor(signal_url.toString()).then(function (editor) {
-  let editor_window = new mde({ element: editor_div });
 
   let prev_value = "";
   editor_window.codemirror.on('change', function (e) {

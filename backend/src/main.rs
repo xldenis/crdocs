@@ -1,28 +1,26 @@
 pub mod server;
+use warp::Filter;
 
-use async_std::task;
+use server::*;
 
-use tide_static_files::StaticFiles;
-use futures::pin_mut;
+use warp::ws::Ws;
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    env_logger::init();
+
     let mut signaller = server::Signalling { clients: Vec::new() };
-    use futures::future;
-    let mut app = tide::new();
-    app.at("/assets/*path").get(StaticFiles::new("../frontend/www/dist"));
+    let state = new_state();
 
-    let x = async {
-        println!("Starting static file server");
-        app.listen("localhost:5000").await
-    };
+    let users = warp::any().map(move || state.clone());
+    let sig = warp::path("sig")
+        .and(warp::ws())
+        .and(users)
+        .map(|ws: Ws, state| {
+            ws.on_upgrade(move |socket| handle_connection(state, socket))
+        });
 
-    let s = async {
-        println!("Starting singalling server");
-        signaller.start().await
-    };
-
-    pin_mut!(x, s);
-
-    task::block_on(future::select(x, s));
-
+    warp::serve(sig.or(warp::fs::dir("../frontend/www/dist")).with(warp::log("test")))
+        .run(([127, 0, 0, 1], 3012))
+        .await;
 }
