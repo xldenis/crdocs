@@ -10,6 +10,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ansi_term"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee49baf6cb617b853aa8d93bf420db2383fab46d314482ca2803b40d5fde979b"
+dependencies = [
+ "winapi 0.3.8",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -119,6 +128,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
+name = "clap"
+version = "2.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5067f5bb2d80ef5d68b4c87db81601f0b75bca627bc2ef76b141d7b846a3c6d9"
+dependencies = [
+ "ansi_term",
+ "atty",
+ "bitflags",
+ "strsim",
+ "textwrap",
+ "unicode-width",
+ "vec_map",
+]
+
+[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -135,6 +159,7 @@ dependencies = [
  "futures",
  "serde",
  "serde_json",
+ "structopt",
  "tokio",
  "tokio-tungstenite",
  "warp",
@@ -355,6 +380,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7f66481bfee273957b1f20485a4ff3362987f85b2c236580d81b4eb7a326429"
 dependencies = [
  "http 0.2.0",
+]
+
+[[package]]
+name = "heck"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20564e78d53d2bb135c343b3f47714a56af2061f1c928fdb541dc7b9fdd94205"
+dependencies = [
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -740,6 +774,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74490b50b9fbe561ac330df47c08f3f33073d2d00c150f719147d7c54522fa1b"
 
 [[package]]
+name = "proc-macro-error"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875077759af22fa20b610ad4471d8155b321c89c3f2785526c9839b099be4e0a"
+dependencies = [
+ "proc-macro-error-attr",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+]
+
+[[package]]
+name = "proc-macro-error-attr"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5717d9fa2664351a01ed73ba5ef6df09c01a521cb42cb65a061432a826f3c7a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn",
+ "syn-mid",
+]
+
+[[package]]
 name = "proc-macro-hack"
 version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -970,6 +1030,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustversion"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3bba175698996010c4f6dce5e7f173b6eb781fce25d2cfc45e27091ce0b79f6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1061,6 +1132,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c2fb2ec9bcd216a5b0d0ccf31ab17b5ed1d627960edff65bbe95d3ce221cefc"
 
 [[package]]
+name = "strsim"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
+
+[[package]]
+name = "structopt"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1bcbed7d48956fcbb5d80c6b95aedb553513de0a1b451ea92679d999c010e98"
+dependencies = [
+ "clap",
+ "lazy_static",
+ "structopt-derive",
+]
+
+[[package]]
+name = "structopt-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "095064aa1f5b94d14e635d0a5684cf140c43ae40a0fd990708d38f5d669e5f64"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1069,6 +1170,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "syn-mid"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7be3539f6c128a931cf19dcee741c1af532c7fd387baa739c03dd2e96479338a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1092,6 +1204,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb6bfa289a4d7c5766392812c0a1f4c1ba45afa1ad47803c11e1f407d846d75f"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
+dependencies = [
+ "unicode-width",
 ]
 
 [[package]]
@@ -1274,6 +1395,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "unicode-segmentation"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e83e153d1053cbb5a118eeff7fd5be06ed99153f00dbcd8ae310c5fb2b22edc0"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caaa9d531767d1ff2150b9332433f32a24622147e5ebb1f26409d5da67afd479"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1301,6 +1434,12 @@ name = "utf-8"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05e42f7c18b8f902290b009cde6d651262f956c98bc51bca4cd1d511c9cd85c7"
+
+[[package]]
+name = "vec_map"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05c78687fb1a80548ae3250346c3db86a80a7cdd77bda190189f2d0a0987c81a"
 
 [[package]]
 name = "version_check"

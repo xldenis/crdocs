@@ -16,3 +16,4 @@ futures = "*"
 serde_json = "*"
 serde = { version = "*", features = ["derive"] }
 env_logger = "*"
+structopt = "*"

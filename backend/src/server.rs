@@ -7,7 +7,7 @@ use futures::channel::mpsc::*;
 
 use futures::{future, stream::{TryStreamExt, StreamExt}, pin_mut};
 
-use warp::ws::{Message, WebSocket, Ws};
+use warp::ws::{Message, WebSocket};
 
 pub struct Signalling {
     pub clients: Vec<Client>,
@@ -95,7 +95,6 @@ pub async fn handle_connection(state: PeerMap, ws: WebSocket) {
 
     state.lock().unwrap().peers.remove(&peer_id);
 }
-use warp::Filter;
 // Incredibly basic signalling server that just broadcasts every message to everyone
 
 pub fn new_state () -> PeerMap {
