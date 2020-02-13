@@ -1,3 +1,4 @@
+#![recursion_limit="256"]
 pub mod causal;
 pub mod editor;
 pub mod lseq;

@@ -91,11 +91,16 @@ where
                     }
                 },
                 msg = peer_events.next() => {
-                    debug!("sending ice candidate remote_id={:?}", self.remote_id);
+                    debug!("sending ice candidate remote_id={:?} state={:?}", self.remote_id, peer.ice_connection_state());
                     if let Err(_) = Self::send_candidate(&mut self.sender, msg).await {
                         warn!("failed to send ICE candidate");
                     };
                 },
+                default => {
+                    if peer.ice_connection_state() == RtcIceConnectionState::Connected {
+                        break
+                    }
+                }
                 complete => { break },
             };
         }

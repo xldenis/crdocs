@@ -168,9 +168,7 @@ impl NetworkLayer {
                 let this = self.clone();
                 let id = handshake.remote_id;
 
-                if handshake.initiator {
-                    recv_from_peer.send(NetEvent::Connection(handshake.remote_id)).await.unwrap();
-                }
+                recv_from_peer.send(NetEvent::Connection(handshake.remote_id)).await.unwrap();
 
                 spawn_local(async move {
                     let _ = rx.map(NetEvent::Msg).map(Ok).forward(recv_from_peer).await;
