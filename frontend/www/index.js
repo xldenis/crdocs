@@ -12,8 +12,11 @@ const peers_span = document.getElementById('peers');
 editor_div.value = "";
 
 let signal_url = new URL(window.location)
-signal_url.port = 3012
-signal_url.protocol = "ws:"
+if (signal_url.protocol == "https:") {
+  signal_url.protocol = "wss:"
+} else {
+  signal_url.protocol = "ws:"
+}
 signal_url.pathname = "sig"
 let editor_window = new mde({ element: editor_div });
 
@@ -27,7 +30,6 @@ wasm.create_editor(signal_url.toString()).then(function (editor) {
     let ix = 0;
 
     for (const p of d) {
-      console.log(p);
       for (const c of p.value) {
         if (p.added) {
           editor.insert(c, ix);

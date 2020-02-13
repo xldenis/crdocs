@@ -26,7 +26,7 @@ use crate::network::*;
 
 #[wasm_bindgen]
 pub async fn create_editor(url: String) -> Editor {
-    console_log::init_with_level(log::Level::Debug).unwrap();
+    console_log::init_with_level(log::Level::Info).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let (id, init_pr, io) = connect_and_get_id(&url).await.unwrap();
 
@@ -37,6 +37,8 @@ pub async fn create_editor(url: String) -> Editor {
     log::info!("network started");
 
     if id != init_pr {
+        log::info!("connecting to initial peer={}", init_pr);
+
         net.connect_to_peer(init_pr).await;
     }
 

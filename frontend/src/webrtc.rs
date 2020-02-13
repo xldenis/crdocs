@@ -3,7 +3,7 @@ use gloo_events::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     RtcIceCandidate, RtcIceCandidateInit, RtcPeerConnection, RtcPeerConnectionIceEvent, RtcSdpType,
-    RtcSessionDescription, RtcSessionDescriptionInit,
+    RtcSessionDescription, RtcSessionDescriptionInit, RtcConfiguration, RtcIceServer
 };
 
 use wasm_bindgen::JsValue;
@@ -48,6 +48,17 @@ impl WebRtc {
             Ok(rtc) => Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None }),
             Err(e) => Err(e),
         }
+    }
+
+    pub fn new_with_ice(ice: Vec<RtcIceServer>) -> Result<Self, wasm_bindgen::JsValue> {
+        let mut conf = RtcConfiguration::new();
+        let servers = js_sys::Array::new();
+        for s in ice {
+            servers.push(&s.into());
+        };
+        conf.ice_servers(&servers);
+        let rtc = RtcPeerConnection::new_with_configuration(&conf)?;
+        Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None })
     }
 
     /// Register a callback to handle the onicecandidate event
@@ -139,8 +150,16 @@ pub struct SimplePeer {
 }
 
 impl SimplePeer {
-    pub fn new() -> Result<(Self, UnboundedReceiver<RtcIceCandidate>), wasm_bindgen::JsValue> {
-        let mut rtc_conn = WebRtc::new()?;
+    pub fn new_with_ice(ice: Vec<&str>) -> Result<(Self, UnboundedReceiver<RtcIceCandidate>), wasm_bindgen::JsValue> {
+        let ice = ice.iter().map(|s| {
+            let mut i = RtcIceServer::new(); 
+            let urls = js_sys::Array::new();
+            urls.push(&JsValue::from_str(s));
+            i.urls(&urls);
+            i
+        }).collect();
+
+        let mut rtc_conn = WebRtc::new_with_ice(ice)?;
         let (tx, rx) = mpsc::unbounded();
 
         rtc_conn.register_on_ice(move |ice_candidate: &RtcPeerConnectionIceEvent| {

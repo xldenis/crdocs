@@ -26,7 +26,7 @@ where
     pub async fn handle_new_peer(&mut self) -> Result<(SimplePeer, (DataChannelStream, UnboundedReceiver<JsValue>)), js_sys::Error> {
         use HandshakeProtocol::*;
 
-        let (mut peer, peer_events) = SimplePeer::new()?;
+        let (mut peer, peer_events) = SimplePeer::new_with_ice(vec!["stun:stun1.l.google.com:19302"])?;
         let dc = peer.create_data_channel("peer-connection", 0);
 
         debug!("starting handshake with {}", self.remote_id);
