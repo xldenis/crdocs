@@ -21,11 +21,13 @@ jobs:
     - name: Cache cargo build
       uses: actions/cache@v1
       with:
-        path: target
+        path: ./backend/target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
     - name: Build
+      working-directory: ./backend
       run: cargo build --verbose
     - name: Run tests
+      working-directory: ./backend
       run: cargo test --verbose
   wasm:
     runs-on: ubuntu-latest
