@@ -7,11 +7,8 @@ use futures::stream::*;
 
 use js_sys::Function;
 
-// use log::*;
-
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsValue;
