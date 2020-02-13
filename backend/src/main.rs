@@ -8,6 +8,7 @@ use warp::ws::Ws;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+use log::*;
 #[derive(StructOpt)]
 #[structopt(version = "0.0.1", author = "Xavier D.")]
 struct Opts {
@@ -21,6 +22,8 @@ struct Opts {
 async fn main() {
     env_logger::init();
     let opt = Opts::from_args();
+
+    log::info!("starting up singalling server on port {}", opt.port);
 
     let state = new_state();
 

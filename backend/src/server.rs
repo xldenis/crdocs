@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use log::*;
 
 use std::collections::*;
 
@@ -71,24 +72,24 @@ pub async fn handle_connection(state: PeerMap, ws: WebSocket) {
                                 chan.unbounded_send(msg).expect("send failed")
                             }
                             None => {
-                                println!("Tried sending message to non-existent peer {}", id);
+                                log::info!("Tried sending message to non-existent peer {}", id);
                             }
                         }
                     }
                     Err(err) => {
-                        println!("{:?}", err);
+                        log::error!("{:?}", err);
                     }
                 }
             }
             _ => {
-                println!("unsupported msg type")
+                log::warn!("unsupported msg type")
             }
         }
 
         future::ok(())
     });
 
-    let receive_from_others = rx.map(|msg| {println!("sending {}", peer_id); msg}).map(Ok).forward(outgoing);
+    let receive_from_others = rx.map(|msg| {log::info!("sending {}", peer_id); msg}).map(Ok).forward(outgoing);
 
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;

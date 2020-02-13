@@ -157,6 +157,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "futures",
+ "log 0.3.9",
  "serde",
  "serde_json",
  "structopt",
