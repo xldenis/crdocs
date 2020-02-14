@@ -20,7 +20,8 @@ RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
     apt-get update && \
     apt-get install -y yarn
 
-RUN cargo install wasm-pack
+# Install wasm-pack and dependencies
+RUN cargo install wasm-pack wasm-bindgen && rustup target add wasm32-unknown-unknown
 
 WORKDIR /usr/src/crdocs
 
