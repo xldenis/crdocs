@@ -154,12 +154,17 @@ impl NetworkLayer {
         S::Error: std::fmt::Debug,
     {
         match handshake.handle_new_peer().await {
-            Ok((peer, (dcs, rx))) => {
-                if peer.ice_connection_state() != RtcIceConnectionState::Connected {
+            Ok((mut peer, (dcs, rx))) => {
+                use RtcIceConnectionState::*;
+
+                // Wait to try all the connection candidates
+                peer.wait_for_connection().await;
+
+                if peer.ice_connection_state() != Connected && peer.ice_connection_state() != Completed {
+                    warn!("Couldn't establish connection to peer {:?}", peer.ice_connection_state());
                     return;
                 }
 
-                // let (dcs, rx) = DataChannelStream::new(dc);
                 let mut recv_from_peer = self.local_chan.clone();
 
                 self.peers.borrow_mut().insert(handshake.remote_id, (peer, dcs));

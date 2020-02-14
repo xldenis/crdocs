@@ -58,7 +58,7 @@ where
         let (dcs, rx) = DataChannelStream::new(dc);
 
         info!("Exchanging ICE candidates remote_id={}", self.remote_id);
-        self.exchange_ice_candidates(&mut peer, peer_events).await;
+        self.exchange_ice_candidates(&mut peer, peer_events).await?;
 
         info!("finished exchanging ICE state={:?} remote_id={}", peer.ice_connection_state(), self.remote_id);
 
@@ -69,7 +69,7 @@ where
         &mut self,
         peer: &mut SimplePeer,
         mut peer_events: UnboundedReceiver<web_sys::RtcIceCandidate>,
-    ) {
+    )  -> Result<(), js_sys::Error> {
         use wasm_timer::Interval;
         use HandshakeProtocol::*;
 
@@ -98,12 +98,18 @@ where
                 },
                 default => {
                     if peer.ice_connection_state() == RtcIceConnectionState::Connected {
+                        // Let our peer know that we're ending the exchange
+                        if let Err(_) = Self::send_candidate(&mut self.sender, None).await {
+                            warn!("failed to send ICE candidate");
+                        };
+
                         break
                     }
                 }
                 complete => { break },
             };
         }
+        Ok(())
     }
 
     // Send local candidates to a remote peer

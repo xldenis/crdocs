@@ -13,6 +13,7 @@ use std::rc::*;
 pub struct WebRtc {
     inner: Rc<RtcPeerConnection>,
     on_ice_candidate: Option<EventListener>,
+    pub on_state_change: Option<EventListener>,
 }
 
 // In WebRtc creating a connection is a fairly elaborate process
@@ -45,7 +46,7 @@ use wasm_bindgen::JsCast;
 impl WebRtc {
     pub fn new() -> Result<Self, wasm_bindgen::JsValue> {
         match RtcPeerConnection::new() {
-            Ok(rtc) => Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None }),
+            Ok(rtc) => Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None, on_state_change: None }),
             Err(e) => Err(e),
         }
     }
@@ -58,7 +59,7 @@ impl WebRtc {
         };
         conf.ice_servers(&servers);
         let rtc = RtcPeerConnection::new_with_configuration(&conf)?;
-        Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None })
+        Ok(WebRtc { inner: Rc::new(rtc), on_ice_candidate: None, on_state_change: None })
     }
 
     /// Register a callback to handle the onicecandidate event
@@ -69,6 +70,19 @@ impl WebRtc {
         let listener = EventListener::new(&self.inner, "icecandidate", move |msg: &web_sys::Event| {
             let event = msg.dyn_ref::<web_sys::RtcPeerConnectionIceEvent>().unwrap();
             callback(event);
+        });
+
+        self.on_ice_candidate = Some(listener);
+    }
+
+
+    /// Register a callback to handle the oniceconnectionstatechange event
+    pub fn register_ice_state_change<F>(&mut self, mut callback: F)
+    where
+        F: FnMut() + 'static,
+    {
+        let listener = EventListener::new(&self.inner, "iceconnectionstatechange", move |_msg: &web_sys::Event| {
+            callback();
         });
 
         self.on_ice_candidate = Some(listener);
@@ -141,11 +155,13 @@ impl WebRtc {
 
 use futures::channel::mpsc;
 use futures::channel::mpsc::*;
+use futures::stream::StreamExt;
+
 /// Simple abstraction over the previous (abstracted) rtc connection which just turns the ice
 /// candidate callbacks into streams of events.
 pub struct SimplePeer {
     conn: WebRtc,
-    //
+    pub statechange: UnboundedReceiver<()>,
     //send: mpsc::UnboundedSender<RtcPeerConnectionIceEvent>,
 }
 
@@ -178,10 +194,15 @@ impl SimplePeer {
             };
         });
 
+        let (t_state, r_state) = mpsc::unbounded();
+        rtc_conn.register_ice_state_change(move || {
+            t_state.unbounded_send(()).unwrap()
+        });
+
         Ok((
             SimplePeer {
                 conn: rtc_conn,
-                //send: tx,
+                statechange: r_state,
             },
             rx,
         ))
@@ -199,10 +220,6 @@ impl SimplePeer {
         self.conn.set_remote_description(SdpType::Answer(ans)).await
     }
 
-    //pub fn ice_candidates(&mut self) -> &mut UnboundedReceiver<RtcIceCandidate> {
-    //   &mut self.recv
-    //}
-
     pub async fn add_ice_candidate(&mut self, cand: RtcIceCandidateInit) -> Result<(), Err> {
         self.conn.add_ice_candidate(cand).await
     }
@@ -213,6 +230,18 @@ impl SimplePeer {
 
     pub fn ice_gathering_state(&self) -> RtcIceGatheringState {
         self.conn.ice_gathering_state()
+    }
+
+    pub async fn wait_for_connection(&mut self) -> () {
+        use RtcIceConnectionState::*;
+        loop {
+            match self.ice_connection_state() {
+                New => (),
+                Checking => (),
+                _ => return,
+            }
+            self.statechange.next().await;
+        }
     }
 
     pub fn create_data_channel(&self, name: &str, id: u16) -> RtcDataChannel {
@@ -228,6 +257,8 @@ pub struct DataChannelStream {
     pub chan: RtcDataChannel,
     _on_data: EventListener,
     _on_close: EventListener,
+    _on_open: EventListener,
+    is_open: futures::channel::oneshot::Receiver<bool>
 
     //tx: UnboundedSender<JsValue>,
     //rx : UnboundedReceiver<JsValue>,
@@ -247,7 +278,19 @@ impl DataChannelStream {
             tx.close_channel();
         });
 
-        (DataChannelStream { chan, _on_data: el, _on_close: closing }, rx)
+        let (o_tx, o_rx) = futures::channel::oneshot::channel();
+        let mut signal = Some(o_tx);
+
+        let opening = EventListener::new(&chan, "open", move |_| {
+            signal.take().unwrap().send(true).unwrap();
+        });
+
+        (DataChannelStream { chan,
+            _on_data: el,
+            _on_close: closing,
+            _on_open: opening,
+            is_open: o_rx
+        }, rx)
     }
 
     pub fn ready(&self) -> bool {
@@ -261,7 +304,9 @@ impl DataChannelStream {
         self.chan.buffered_amount()
     }
 
-    pub fn send(&mut self, msg: &str) -> Result<(), Err> {
+    pub async fn send(&mut self, msg: &str) -> Result<(), Err> {
+        // Wait for the channel to open before sending
+        (&mut self.is_open).await.unwrap();
         Ok(self.chan.send_with_str(msg)?)
     }
 }
@@ -304,8 +349,8 @@ mod test {
 
     #[wasm_bindgen_test]
     async fn test_simple_peer() {
-        let (mut rtc1, _) = SimplePeer::new().expect("create simplepeer");
-        let (mut rtc2, _) = SimplePeer::new().expect("create simplepeer");
+        let (mut rtc1, _) = SimplePeer::new_with_ice(vec![]).expect("create simplepeer");
+        let (mut rtc2, _) = SimplePeer::new_with_ice(vec![]).expect("create simplepeer");
 
         let off = rtc1.create_offer().await.expect("create offer");
         let ans = rtc2.handle_offer(off).await.expect("handle offer");

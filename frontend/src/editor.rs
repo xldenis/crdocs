@@ -47,13 +47,7 @@ impl CausalOp for Op {
             Op::Delete{remote: (s, t) ,..} => Some((SiteId::from(*s), LogTime::from(*t))),
         }
     }
-    // fn id(&self) -> Self::Id {
-    //     match self {
-    //         Op::Insert{id,..} => id,
-    //         Op::Delete{id,..} => id,
 
-    //     }.clone()
-    // }
     fn site(&self) -> SiteId {
         match self {
             Op::Insert{site_id, ..} => SiteId::from(*site_id),
@@ -93,7 +87,6 @@ impl Editor {
                     NetEvent::Connection(remote) => {
                         //We just connected to a new peer! Let's check to see if they have any
                         //events we didn't see.
-
                         let msg = serde_json::to_string(&EditorOp::AntiEntropyReq { site_id: id, vec: local_barrier.borrow().vvwe()}).unwrap();
                         local_net.unicast(remote, &msg).unwrap();
 
