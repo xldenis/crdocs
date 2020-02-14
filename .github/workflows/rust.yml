@@ -49,7 +49,7 @@ jobs:
     - name: Cache wasm-pack build
       uses: actions/cache@v1
       with:
-        path: target
+        path: ./frontend/target
         key: ${{ runner.os }}-wasm-pack-target-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Build (WASM)
