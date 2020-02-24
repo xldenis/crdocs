@@ -21,7 +21,7 @@ RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
     apt-get install -y yarn
 
 # Install wasm-pack and dependencies
-RUN cargo install wasm-pack wasm-bindgen && rustup target add wasm32-unknown-unknown
+RUN cargo install wasm-pack wasm-bindgen wasm-bindgen-test && rustup target add wasm32-unknown-unknown
 
 WORKDIR /usr/src/crdocs
 
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=target \
 
 WORKDIR ./www/
 
-# tmp refactor after 
+# tmp refactor after
 RUN yarn install
 RUN yarn build --mode=production
 
