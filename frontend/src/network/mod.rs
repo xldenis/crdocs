@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error;
 use std::rc::Rc;
-//use std::sync::Mutex;
 use std::cell::RefCell;
 
 use wasm_bindgen::JsValue;
@@ -22,21 +21,28 @@ mod handshake;
 
 use handshake::HandshakeProtocol;
 
+#[derive(Deserialize, Serialize)]
+enum SignalMsg {
+    NewSite { },
+    Reconn { site_id: u32 },
+    InitMsg { site_id: u32, initial_peer: u32},
+}
+
 pub async fn connect_and_get_id(url: &str) -> Result<(u32, u32, WsIo), Box<dyn error::Error>> {
+    use SignalMsg::*;
     let (_, mut wsio) = WsStream::connect(url, None).await?;
 
-    let init_msg = wsio.next().await.expect("first message");
+    wsio.send(WsMessage::Text(serde_json::to_string(&NewSite{})?)).await?;
+    let init_msg = wsio.next().await.unwrap();
 
     match init_msg {
         WsMessage::Text(msg) => {
-            #[derive(Deserialize)]
-            struct InitMsg {
-                site_id: u32,
-                initial_peer: u32,
-            };
-            let init_msg: InitMsg = serde_json::from_str(&msg)?;
-
-            return Ok((init_msg.site_id, init_msg.initial_peer, wsio));
+            match serde_json::from_str(&msg)? {
+                InitMsg { site_id, initial_peer } => {
+                    return Ok((site_id, initial_peer, wsio));
+                }
+                _ => panic!(""),
+            }
         }
         _ => panic!("First message should be json"),
     }
@@ -50,9 +56,14 @@ struct Sig {
 
 #[derive(Debug)]
 pub enum NetEvent {
-    Connection(u32),
+    Connected(u32),
+    Disconnected(u32),
+    Failed(u32),
+    Connecting(u32),
     Msg(JsValue),
 }
+
+use NetEvent::*;
 
 pub struct NetworkLayer {
     pub peers: RefCell<HashMap<u32, (SimplePeer, DataChannelStream)>>,
@@ -96,46 +107,37 @@ impl NetworkLayer {
         while let Some(WsMessage::Text(msg)) = input_stream.next().await {
             use HandshakeProtocol::*;
 
-            match serde_json::from_str(&msg).unwrap() {
-                Sig { id, msg: Start {} } => {
-                    info!("received handshake start from {}", id);
-                    // A peer just asked us to start a peer connection!
+            let Sig {id, msg} = serde_json::from_str(&msg).unwrap();
+
+            let chan = peer_signalling.entry(id)
+                .or_insert_with(|| {
+                    // Create the signalling state machine for this peer
                     let (tx, rx) = unbounded();
                     let peer_sink = self.make_peer_sink(id);
 
-                    peer_signalling.insert(id, tx);
+                    // Are we being the initiator?
+                    let initiator = match msg {
+                        Start {} => false,
+                        _ => true
+                    };
 
+                    // Set initiator to false, because in this state, we've just received an
+                    // offer.
                     let handshake = handshake::State {
-                        initiator: false,
+                        initiator: initiator,
                         sender: peer_sink,
                         remote_id: id,
                         peer_recv: rx,
                     };
 
-                    // Spawn an async closure that will handle the handshake with this peer
                     spawn_local(Self::handle_new_peer(self.clone(), handshake));
+                    tx.clone()
+                });
+            match msg {
+                Start {} => {
+                    info!("received handshake start from {}", id);
                 }
-                Sig { id, msg } => {
-                    let chan = peer_signalling.entry(id)
-                        .or_insert_with(|| {
-                            info!("received offer from {}", id);
-                            // Create the signalling state machine for this peer
-                            let (tx, rx) = unbounded();
-                            let peer_sink = self.make_peer_sink(id);
-
-                            // Set initiator to false, because in this state, we've just received an
-                            // offer.
-                            let handshake = handshake::State {
-                                initiator: true,
-                                sender: peer_sink,
-                                remote_id: id,
-                                peer_recv: rx,
-                            };
-
-                            spawn_local(Self::handle_new_peer(self.clone(), handshake));
-                            tx.clone()
-                        });
-
+                msg => {
                     if let Err(_) = chan.send(msg.clone()).await {
                         error!("Could not send {:?} to {:?}", msg, id);
                     };
@@ -153,15 +155,18 @@ impl NetworkLayer {
         S: Sink<HandshakeProtocol> + Unpin,
         S::Error: std::fmt::Debug,
     {
+        self.local_chan.clone().send(Connecting(handshake.remote_id)).await.unwrap();
+
         match handshake.handle_new_peer().await {
             Ok((mut peer, (dcs, rx))) => {
-                use RtcIceConnectionState::*;
+                use RtcIceConnectionState::{Connected, Completed};
 
                 // Wait to try all the connection candidates
                 peer.wait_for_connection().await;
 
                 if peer.ice_connection_state() != Connected && peer.ice_connection_state() != Completed {
                     warn!("Couldn't establish connection to peer {:?}", peer.ice_connection_state());
+                    self.local_chan.clone().send(Failed(handshake.remote_id)).await.unwrap();
                     return;
                 }
 
@@ -173,15 +178,19 @@ impl NetworkLayer {
                 let this = self.clone();
                 let id = handshake.remote_id;
 
-                recv_from_peer.send(NetEvent::Connection(handshake.remote_id)).await.unwrap();
+                recv_from_peer.send(NetEvent::Connected(handshake.remote_id)).await.unwrap();
 
                 spawn_local(async move {
-                    let _ = rx.map(NetEvent::Msg).map(Ok).forward(recv_from_peer).await;
+                    let _ = rx.map(Msg).map(Ok).forward(recv_from_peer.clone()).await;
                     this.peers.borrow_mut().remove(&id);
+                    recv_from_peer.send(Disconnected(id)).await.unwrap();
                 });
 
             }
-            Err(err) => error!("Couldn't establish peer connection {:?}", err),
+            Err(err) => {
+                self.local_chan.clone().send(Failed(handshake.remote_id)).await.unwrap();
+                error!("Couldn't establish peer connection {:?}", err)
+            }
         }
     }
 
@@ -197,15 +206,15 @@ impl NetworkLayer {
     // Send a packet out to the network
     pub async fn broadcast(&self, msg: &str) -> Result<(), js_sys::Error> {
         for (_, (_, tx)) in self.peers.borrow_mut().iter_mut() {
-            tx.chan.send_with_str(msg)?;
+            tx.send(msg)?;
         }
         Ok(())
     }
 
     pub fn unicast(&self, ix: u32, msg: &str) -> Result<(), js_sys::Error> {
-        match self.peers.borrow().get(&ix) {
+        match self.peers.borrow_mut().get_mut(&ix) {
             Some((_, stream)) => {
-                stream.chan.send_with_str(msg)?;
+                stream.send(msg)?;
             }
             None => {
                 Err(js_sys::Error::new("not connected to peer"))?;

@@ -85,7 +85,7 @@ impl WebRtc {
             callback();
         });
 
-        self.on_ice_candidate = Some(listener);
+        self.on_state_change = Some(listener);
     }
 
     /// Create an offer and set the local description to match
@@ -168,7 +168,7 @@ pub struct SimplePeer {
 impl SimplePeer {
     pub fn new_with_ice(ice: Vec<&str>) -> Result<(Self, UnboundedReceiver<RtcIceCandidate>), wasm_bindgen::JsValue> {
         let ice = ice.iter().map(|s| {
-            let mut i = RtcIceServer::new(); 
+            let mut i = RtcIceServer::new();
             let urls = js_sys::Array::new();
             urls.push(&JsValue::from_str(s));
             i.urls(&urls);
@@ -257,8 +257,8 @@ pub struct DataChannelStream {
     pub chan: RtcDataChannel,
     _on_data: EventListener,
     _on_close: EventListener,
-    _on_open: EventListener,
-    is_open: futures::channel::oneshot::Receiver<bool>
+    // _on_open: EventListener,
+    // is_open: futures::channel::oneshot::Receiver<bool>
 
     //tx: UnboundedSender<JsValue>,
     //rx : UnboundedReceiver<JsValue>,
@@ -278,18 +278,18 @@ impl DataChannelStream {
             tx.close_channel();
         });
 
-        let (o_tx, o_rx) = futures::channel::oneshot::channel();
-        let mut signal = Some(o_tx);
+        // let (o_tx, o_rx) = futures::channel::oneshot::channel();
+        // let mut signal = Some(o_tx);
 
-        let opening = EventListener::new(&chan, "open", move |_| {
-            signal.take().unwrap().send(true).unwrap();
-        });
+        // let opening = EventListener::new(&chan, "open", move |_| {
+        //     signal.take().unwrap().send(true).unwrap();
+        // });
 
         (DataChannelStream { chan,
             _on_data: el,
             _on_close: closing,
-            _on_open: opening,
-            is_open: o_rx
+            // _on_open: opening,
+            // is_open: o_rx
         }, rx)
     }
 
@@ -304,9 +304,8 @@ impl DataChannelStream {
         self.chan.buffered_amount()
     }
 
-    pub async fn send(&mut self, msg: &str) -> Result<(), Err> {
+    pub fn send(&mut self, msg: &str) -> Result<(), Err> {
         // Wait for the channel to open before sending
-        (&mut self.is_open).await.unwrap();
         Ok(self.chan.send_with_str(msg)?)
     }
 }

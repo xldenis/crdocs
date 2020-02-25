@@ -8,7 +8,12 @@
   <body>
     <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
     <textarea id='editor' style="width:500px; height: 500px;"></textarea>
-    <span id='peers'></span>
+    <div>
+      <h4>Debug Info</h4>
+      <span>Number of Connected Peers: </span><span id='peers'></span>
+      <h5>Debug Event Log</h5>
+      <div id='debug'></div>
+    </div>
     <script src="./bootstrap.js"></script>
   </body>
 </html>

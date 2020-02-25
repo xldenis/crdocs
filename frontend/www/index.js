@@ -9,6 +9,8 @@ import * as mde from 'simplemde';
 
 const editor_div = document.getElementById('editor');
 const peers_span = document.getElementById('peers');
+const debug_div = document.getElementById('debug');
+
 editor_div.value = "";
 
 let signal_url = new URL(window.location)
@@ -45,7 +47,10 @@ wasm.create_editor(signal_url.toString()).then(function (editor) {
     prev_value = editor_window.codemirror.getValue();
   });
 
-
+  editor.ondebuginfo(function (t) {
+    debug_div.innerHTML += "<p>" + t + "</p>";
+    peers_span.textContent = editor.num_connected_peers();
+  });
   editor.onchange(function(t) {
     if (t != prev_value) {
       prev_value = t;
@@ -55,8 +60,6 @@ wasm.create_editor(signal_url.toString()).then(function (editor) {
       editor_window.codemirror.setValue(t);
       editor_window.codemirror.setSelections(selections);
     }
-    peers_span.textContent = editor.num_connected_peers();
-
   });
 });
 //wasm.test_webrtc_conn(p.get('id'));

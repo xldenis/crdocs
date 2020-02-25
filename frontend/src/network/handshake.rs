@@ -29,7 +29,7 @@ where
         let (mut peer, peer_events) = SimplePeer::new_with_ice(vec!["stun:stun1.l.google.com:19302"])?;
         let dc = peer.create_data_channel("peer-connection", 0);
 
-        debug!("starting handshake with {}", self.remote_id);
+        debug!("starting handshake with {}", self.remote_id,);
         // LETS DO THE WEBRTC DANCE
         if self.initiator {
             debug!("waiting for offer remote_id={}", self.remote_id);
