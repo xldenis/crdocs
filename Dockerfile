@@ -9,7 +9,7 @@ WORKDIR /usr/src/crdocs/backend
 
 RUN --mount=type=cache,target=/usr/local/cargo,from=rust,source=/usr/local/cargo \
     --mount=type=cache,target=target \
-    cargo build && mkdir -p out && cp target/release/crdocs_app out/
+    cargo build --release && mkdir -p out && cp target/release/crdocs_app out/
 # build the frontend
 
 FROM rust:1.41.0-slim as frontend

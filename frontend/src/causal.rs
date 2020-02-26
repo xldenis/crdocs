@@ -11,17 +11,27 @@ use serde::{Deserialize, Deserializer, self, Serialize};
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, Hash, PartialOrd, Ord, From, Deserialize, Serialize)]
 pub struct SiteId(
-    #[serde(deserialize_with = "from_str")]
+    #[serde(deserialize_with = "deserialize_number_from_string")]
     pub u32);
 use std::str::FromStr;
 
-fn from_str<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-    where T: FromStr,
-          T::Err: core::fmt::Display,
-          D: Deserializer<'de>
+pub fn deserialize_number_from_string<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: FromStr + serde::Deserialize<'de>,
+    <T as FromStr>::Err: core::fmt::Display,
 {
-    let s = String::deserialize(deserializer)?;
-    T::from_str(&s).map_err(serde::de::Error::custom)
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt<T> {
+        String(String),
+        Number(T),
+    }
+
+    match StringOrInt::<T>::deserialize(deserializer)? {
+        StringOrInt::String(s) => s.parse::<T>().map_err(serde::de::Error::custom),
+        StringOrInt::Number(i) => Ok(i),
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone, PartialOrd, Ord, Hash, Add, From, Into, Deserialize, Serialize)]
@@ -29,7 +39,7 @@ pub struct LogTime(u64);
 
 
 /// Version Vector with Exceptions
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CausalityBarrier<T: CausalOp> {
     peers: HashMap<SiteId, VectorEntry>,
     // Do we really need a map or just a set?

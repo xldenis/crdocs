@@ -2,6 +2,8 @@ use super::*;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::Sink;
 
+use js_sys::Error;
+
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub enum HandshakeProtocol {
     Start {},
@@ -34,21 +36,21 @@ where
         if self.initiator {
             debug!("waiting for offer remote_id={}", self.remote_id);
             // 2. Handle the offer
-            if let Offer { off } = self.peer_recv.next().await.expect("handle_new_peer") {
+            if let Offer { off } = self.peer_recv.next().await.ok_or(Error::new("could not recieve offer"))? {
                 debug!("got offer remote_id={}", self.remote_id);
                 let ans = peer.handle_offer(off).await?;
                 // 3. Create an answer
-                self.sender.send(Answer { ans }).await.expect("handle_new_peer");
+                self.sender.send(Answer { ans }).await.map_err(|_| Error::new("could not send answer"))?;
             }
         } else {
             debug!("sending offer remote_id={}", self.remote_id);
             // 1. Create an offer
             let off = peer.create_offer().await?;
-            self.sender.send(Offer { off }).await.expect("handle_new_peer");
+            self.sender.send(Offer { off }).await.map_err(|_| Error::new("could not send offer"))?;
 
             debug!("sent offer remote_id={}", self.remote_id);
             // 4. Handle answer
-            if let Answer { ans } = self.peer_recv.next().await.expect("handle_new_peer") {
+            if let Answer { ans } = self.peer_recv.next().await.ok_or(Error::new("could not recieve answer"))? {
                 peer.handle_answer(ans).await?;
             }
             debug!("got answer remote_id={}", self.remote_id);

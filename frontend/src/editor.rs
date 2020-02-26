@@ -62,8 +62,6 @@ enum EditorOp {
 }
 
 impl CausalOp for Op {
-    // type Id = Identifier;
-
     fn happens_before(&self) -> Option<(SiteId, LogTime)> {
         match self {
             Op::Insert{..} => None,
@@ -91,23 +89,33 @@ fn shared<T>(t: T) -> Shared<T> {
     Rc::new(RefCell::new(t))
 }
 
-impl WrappedEditor {
-    pub async fn new(net: std::rc::Rc<NetworkLayer>, id: u32, rx: UnboundedReceiver<NetEvent>) -> Self {
-        WrappedEditor(Editor::new(net, id, rx).await)
+impl From<Rc<Editor>> for WrappedEditor {
+    fn from(edit: Rc<Editor>) -> Self {
+        WrappedEditor(edit)
     }
 }
+
 impl Editor {
-    pub async fn new(net: std::rc::Rc<NetworkLayer>, id: u32, rx: UnboundedReceiver<NetEvent>) -> Rc<Self> {
-        let store = shared(LSeq::new(id));
+    pub async fn new(net: Rc<NetworkLayer>, id: u32, rx: UnboundedReceiver<NetEvent>) -> Rc<Self> {
+        let store = LSeq::new(id);
+        let barrier = CausalityBarrier::new(SiteId(id));
+        Self::with_args(net, id, rx, store, barrier).await
+    }
+
+    pub async fn with_args(
+        net: Rc<NetworkLayer>,
+        id: u32,
+        rx: UnboundedReceiver<NetEvent>,
+        store: LSeq,
+        barrier: CausalityBarrier<Op>,
+    ) -> Rc<Self> {
         let onchange = shared(None);
         let ondebuginfo = shared(None);
-        let barrier = shared(CausalityBarrier::new(SiteId(id)));
 
-        let editor = Rc::new(Editor { network: net, store, onchange, ondebuginfo, causal: barrier, site_id: id });
-        let loc = editor.clone();
-
+        let editor = Rc::new(Editor { network: net, store: shared(store), onchange, ondebuginfo, causal: shared(barrier), site_id: id });
+        let ret = editor.clone();
         spawn_local(async move { editor.message_loop(rx).await });
-        loc
+        ret
     }
 
     async fn message_loop(&self, mut rx: UnboundedReceiver<NetEvent>) {
@@ -178,15 +186,13 @@ impl Editor {
                         self.store.borrow_mut().apply(&op);
                     }
                 }
-                let t = self.store.borrow().text();
-                Self::notify_js(&self.onchange.borrow(), &t);
+                self.notify_change();
             }
             Op { op } => {
                 if let Some(op) = self.causal.borrow_mut().ingest(op) {
                     self.store.borrow_mut().apply(&op);
                     self.network.broadcast(&serde_json::to_string(&Op {op: op})?).await?;
-                    let t = self.store.borrow().text();
-                    Self::notify_js(&self.onchange.borrow(), &t);
+                    self.notify_change();
                 }
 
             }
@@ -200,12 +206,10 @@ impl Editor {
         }
     }
 
-    fn notify_js(this: &Option<Function>, s: &str) {
-        match this {
-            Some(x) => {
-                x.call1(&JsValue::NULL, &s.into()).unwrap();
-            }
-            None => {}
+    fn notify_change(&self) {
+       if let Some(x) = &*self.onchange.borrow() {
+            let t = self.store.borrow().text();
+            x.call1(&JsValue::NULL, &t.into()).unwrap();
         }
     }
 }
@@ -224,7 +228,6 @@ impl WrappedEditor {
     }
 
     pub fn delete(&mut self, pos: usize) -> js_sys::Promise {
-
         let op = self.0.store.borrow_mut().local_delete(pos);
         let caus = self.0.causal.borrow_mut().expel(op);
 
@@ -245,6 +248,21 @@ impl WrappedEditor {
 
     pub fn num_connected_peers(&mut self) -> usize {
         self.0.network.num_connected_peers()
+    }
+
+    pub fn refresh(&mut self) {
+        self.0.notify_change();
+    }
+    pub fn save(&mut self) -> std::result::Result<(), JsValue> {
+        let local_storage = web_sys::window().unwrap().local_storage()?.unwrap();
+
+        let barrier_data = serde_json::to_string(&*self.0.causal.borrow()).unwrap();
+        let store_data = serde_json::to_string(&*self.0.store.borrow()).unwrap();
+
+        local_storage.set_item("crdocs-barrier", &barrier_data)?;
+        local_storage.set_item("crdocs-store", &store_data)?;
+        local_storage.set_item("crdocs-id", &format!("{}", self.0.site_id))?;
+        Ok(())
     }
 }
 

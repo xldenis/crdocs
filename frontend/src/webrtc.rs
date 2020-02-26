@@ -260,7 +260,7 @@ pub struct DataChannelStream {
     // _on_open: EventListener,
     // is_open: futures::channel::oneshot::Receiver<bool>
 
-    //tx: UnboundedSender<JsValue>,
+    tx: UnboundedSender<JsValue>,
     //rx : UnboundedReceiver<JsValue>,
 }
 
@@ -274,8 +274,9 @@ impl DataChannelStream {
             loc_tx.unbounded_send(event.data()).expect("send msg");
         });
 
+        let loc_tx = tx.clone();
         let closing = EventListener::new(&chan, "close", move |_| {
-            tx.close_channel();
+            loc_tx.close_channel();
         });
 
         // let (o_tx, o_rx) = futures::channel::oneshot::channel();
@@ -290,6 +291,7 @@ impl DataChannelStream {
             _on_close: closing,
             // _on_open: opening,
             // is_open: o_rx
+            tx: tx,
         }, rx)
     }
 
@@ -306,7 +308,13 @@ impl DataChannelStream {
 
     pub fn send(&mut self, msg: &str) -> Result<(), Err> {
         // Wait for the channel to open before sending
-        Ok(self.chan.send_with_str(msg)?)
+        match self.chan.send_with_str(msg) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.tx.close_channel();
+                Err(e.into())
+            }
+        }
     }
 }
 

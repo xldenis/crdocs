@@ -22,7 +22,17 @@ if (signal_url.protocol == "https:") {
 signal_url.pathname = "sig"
 let editor_window = new mde({ element: editor_div });
 
-wasm.create_editor(signal_url.toString()).then(function (editor) {
+const data = window.localStorage.getItem('crdocs-id');
+
+document.getElementById('reset').onclick = function () {
+  window.localStorage.clear();
+  location.reload();
+};
+
+((data != null)
+  ? wasm.load_editor(signal_url.toString(), data)
+  : wasm.create_editor(signal_url.toString())
+).then(function (editor) {
 
   let prev_value = "";
   editor_window.codemirror.on('change', function (e) {
@@ -51,6 +61,7 @@ wasm.create_editor(signal_url.toString()).then(function (editor) {
     debug_div.innerHTML += "<p>" + t + "</p>";
     peers_span.textContent = editor.num_connected_peers();
   });
+
   editor.onchange(function(t) {
     if (t != prev_value) {
       prev_value = t;
@@ -61,6 +72,14 @@ wasm.create_editor(signal_url.toString()).then(function (editor) {
       editor_window.codemirror.setSelections(selections);
     }
   });
+
+  setInterval(function () {
+    editor.save();
+  }, 15000);
+
+  window.unload = function () { editor.save(); };
+
+  editor.refresh();
 });
 //wasm.test_webrtc_conn(p.get('id'));
 
