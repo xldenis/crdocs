@@ -18,3 +18,4 @@ serde = { version = "*", features = ["derive"] }
 env_logger = "*"
 structopt = "*"
 log = "*"
+rand = "*"
