@@ -223,7 +223,10 @@ impl NetworkLayer {
     pub fn unicast(&self, ix: u32, msg: &str) -> Result<(), js_sys::Error> {
         match self.peers.borrow_mut().get_mut(&ix) {
             Some((_, stream)) => {
-                stream.send(msg)?;
+                if let Err(mut e) = stream.send(msg) {
+                    e.set_name("UnicastError");
+                    Err(e)?
+                }
             }
             None => {
                 Err(js_sys::Error::new("not connected to peer"))?;

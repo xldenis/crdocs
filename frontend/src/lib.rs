@@ -29,7 +29,7 @@ use crate::network::*;
 
 #[wasm_bindgen]
 pub async fn create_editor(url: String) -> WrappedEditor {
-    console_log::init_with_level(log::Level::Info).unwrap();
+    console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let (id, init_pr, io) = connect_with_id(&url, None).await.unwrap();
 
@@ -51,7 +51,7 @@ pub async fn create_editor(url: String) -> WrappedEditor {
 
 #[wasm_bindgen]
 pub async fn load_editor(url: String) -> Result<WrappedEditor, JsValue> {
-    console_log::init_with_level(log::Level::Info).unwrap();
+    console_log::init_with_level(log::Level::Debug).unwrap();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 
     let local_storage = window().unwrap().local_storage()?.unwrap();
